@@ -1,0 +1,14 @@
+digraph G {
+node [shape=box];
+"base_link" [label="base_link"];
+"airframe" [label="airframe"];
+"odroid" [label="odroid"];
+"pixracer_IMU" [label="pixracer_IMU"];
+node [shape=ellipse, color=blue, fontcolor=blue];
+"base_link" -> "joint1" [label="xyz: 0 0 -0.0508 \nrpy: 0 -0 0"]
+"joint1" -> "airframe"
+"base_link" -> "joint2" [label="xyz: 0 0 0 \nrpy: 0 -0 0"]
+"joint2" -> "odroid"
+"base_link" -> "joint3" [label="xyz: 0 0 -0.0222758 \nrpy: 0 -0 0"]
+"joint3" -> "pixracer_IMU"
+}

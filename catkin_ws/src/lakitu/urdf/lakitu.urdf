@@ -1,0 +1,145 @@
+<robot name="lakitu">
+
+	<!-- * * * Link Definitions * * * -->
+
+ 	<link name="base_link">
+		<visual>
+		    <origin xyz="0 0 0" rpy="0 0 0"/>
+			<geometry>
+				<box size="0.08128 0.05588 0.0254"/>
+			</geometry>
+		</visual>
+	</link>
+
+	<link name="odroid">
+		<visual>
+          	<origin xyz="0 0 0" rpy="0 0 0 "/>
+          	<geometry>
+              	<box size="0.08128 0.05588 0.0254" />
+          	</geometry>
+            <material name="Cyan1">
+                  <color rgba="0 0.9 0.9 1.0"/>
+            </material>
+        </visual>
+    </link>
+
+	<link name="airframe">
+		<visual>
+          	<origin xyz="0 0 -.0508" rpy="0 0 0"/>
+          	<geometry>
+              	<cylinder length=".1016" radius=".254"/>
+            </geometry>
+          	<material name="Cyan2">
+              	<color rgba="66 239 80 1"/>
+          	</material>
+		</visual>
+	</link>
+
+    <link name="pixracer_IMU">
+		<visual>
+          	<origin xyz="0 0 -0.0222758" rpy="0 0 0"/>
+          	<geometry>
+              	<box size="0.038619938 0.044859956 0.014709902" />
+            </geometry>
+          	<material name="Cyan2">
+              	<color rgba="66 239 80 1"/>
+          	</material>
+		</visual>
+	</link>
+
+  <joint name="joint1" type="fixed">
+    <parent link="base_link"/>
+    <child link="airframe"/>  
+    <origin xyz="0 0 -.0508" rpy="0 0 0"/>
+ 	</joint>
+
+  <joint name="joint2" type="fixed">
+    <parent link="base_link"/>
+    <child link="odroid"/>
+    <origin xyz="0 0 0" rpy="0 0 0 "/>
+  </joint>
+
+  <joint name="joint3" type="fixed">
+    <parent link="base_link"/>
+    <child link="pixracer_IMU"/>
+    <origin xyz="0 0 -0.0222758" rpy="0 0 0"/>
+  </joint>
+
+  <gazebo>
+    <plugin name='gps_plugin' filename='libgazebo_gps_plugin.so'>
+        <robotNamespace/>
+        <gpsNoise>true</gpsNoise>
+    </plugin>
+
+    <plugin name='mavlink_interface' filename='librotors_gazebo_mavlink_interface.so'>
+      <robotNamespace/>
+      <imuSubTopic>/imu</imuSubTopic>
+      <gpsSubTopic>/gps</gpsSubTopic>
+      <mavlink_addr>INADDR_ANY</mavlink_addr>
+      <mavlink_udp_port>14560</mavlink_udp_port>
+      <serialEnabled>false</serialEnabled>
+      <serialDevice>/dev/ttyACM0</serialDevice>
+      <baudRate>921600</baudRate>
+      <qgc_addr>INADDR_ANY</qgc_addr>
+      <qgc_udp_port>14550</qgc_udp_port>
+      <hil_mode>false</hil_mode>
+      <hil_state_level>false</hil_state_level>
+      <vehicle_is_tailsitter>false</vehicle_is_tailsitter>
+      <motorSpeedCommandPubTopic>/gazebo/command/motor_speed</motorSpeedCommandPubTopic>
+      <control_channels>
+        <channel name='rotor1'>
+          <input_index>0</input_index>
+          <input_offset>0</input_offset>
+          <input_scaling>1000</input_scaling>
+          <zero_position_disarmed>0</zero_position_disarmed>
+          <zero_position_armed>100</zero_position_armed>
+          <joint_control_type>velocity</joint_control_type>
+        </channel>
+        <channel name='rotor2'>
+          <input_index>1</input_index>
+          <input_offset>0</input_offset>
+          <input_scaling>1000</input_scaling>
+          <zero_position_disarmed>0</zero_position_disarmed>
+          <zero_position_armed>100</zero_position_armed>
+          <joint_control_type>velocity</joint_control_type>
+        </channel>
+        <channel name='rotor3'>
+          <input_index>2</input_index>
+          <input_offset>0</input_offset>
+          <input_scaling>1000</input_scaling>
+          <zero_position_disarmed>0</zero_position_disarmed>
+          <zero_position_armed>100</zero_position_armed>
+          <joint_control_type>velocity</joint_control_type>
+        </channel>
+        <channel name='rotor4'>
+          <input_index>3</input_index>
+          <input_offset>0</input_offset>
+          <input_scaling>1000</input_scaling>
+          <zero_position_disarmed>0</zero_position_disarmed>
+          <zero_position_armed>100</zero_position_armed>
+          <joint_control_type>velocity</joint_control_type>
+        </channel>
+      </control_channels>
+     </plugin>
+
+      <static>0</static>
+
+      <plugin name='rotors_gazebo_imu_plugin' filename='librotors_gazebo_imu_plugin.so'>
+        <robotNamespace/>
+        <linkName>pixracer_IMU</linkName>
+        <imuTopic>/imu</imuTopic>
+        <gyroscopeNoiseDensity>0.0003394</gyroscopeNoiseDensity>
+        <gyroscopeRandomWalk>3.8785e-05</gyroscopeRandomWalk>
+        <gyroscopeBiasCorrelationTime>1000.0</gyroscopeBiasCorrelationTime>
+        <gyroscopeTurnOnBiasSigma>0.0087</gyroscopeTurnOnBiasSigma>
+        <accelerometerNoiseDensity>0.004</accelerometerNoiseDensity>
+        <accelerometerRandomWalk>0.006</accelerometerRandomWalk>
+        <accelerometerBiasCorrelationTime>300.0</accelerometerBiasCorrelationTime>
+        <accelerometerTurnOnBiasSigma>0.196</accelerometerTurnOnBiasSigma>
+      </plugin>
+
+    </gazebo>
+      
+<!--   </model> -->
+
+</robot>
