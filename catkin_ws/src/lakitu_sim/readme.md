@@ -7,9 +7,9 @@ SETUP:
   	ADD THE FOLLOWING TO ~/.bashrc
   
 	    source ~/Laki2/catkin_ws/devel/setup.bash
-	    source \~/Firmware/Tools/setup_gazebo.bash \~/Firmware \~Firmware/build/posix_sitl_default
-	    export ROS_PACKAGE_PATH=$ROS_PACKAGE_PATH:\~/Firmware
-	    export ROS_PACKAGE_PATH=$ROS_PACKAGE_PATH:\~/Firmware/Tools/sitl_gazebo
+	    source ~/Firmware/Tools/setup_gazebo.bash ~/Firmware ~Firmware/build/posix_sitl_default
+	    export ROS_PACKAGE_PATH=$ROS_PACKAGE_PATH:~/Firmware
+	    export ROS_PACKAGE_PATH=$ROS_PACKAGE_PATH:~/Firmware/Tools/sitl_gazebo
 	    export PX4_HOME_LAT=28.585586
 	    export PX4_HOME_LON=-81.199212
 
