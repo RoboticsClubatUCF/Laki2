@@ -20,22 +20,22 @@ LAUNCHING SIMULATOR:
   
   Publishing flight targets: (MUST BE DONE FIRST)
 	
-		rostopic pub -l /lakitu/flight_target geometry_msgs/PoseStamped {'header: {stamp: now},pose: {position: {x: 0,y: 0,z: 5}, orientation: {x: 0,y: 0,z: 0,w: 0}'}} -r 120
+	rostopic pub -l /lakitu/flight_target geometry_msgs/PoseStamped {'header: {stamp: now},pose: {position: {x: 0,y: 0,z: 5}, orientation: {x: 0,y: 0,z: 0,w: 0}'}} -r 120
   
   Flipping start switch:
 
-		rostopic pub -l /mavros/rc/in mavros_msgs/RCIn {'channels: [0,0,0,0,0,0,2113,0,0,0,0,0,0,0,0,0,0,0]'}
+	rostopic pub -l /mavros/rc/in mavros_msgs/RCIn {'channels: [0,0,0,0,0,0,2113,0,0,0,0,0,0,0,0,0,0,0]'}
 	
 	
 SENDING COMMANDS (format):
 
 	Setting to OFFBOARD MODE (needed for sending velocities):
-			"rosservice call /mavros/set_mode 0 "OFFBOARD"" //OFFBOARD DOCUMENTATION: https://docs.px4.io/en/flight_modes/offboard.html
+		"rosservice call /mavros/set_mode 0 "OFFBOARD"" //OFFBOARD DOCUMENTATION: https://docs.px4.io/en/flight_modes/offboard.html
 	
 	Arming:
-			"rosservice call /mavros/cmd/arming [true|false]" //where true|false is armed/isn't armed
+		"rosservice call /mavros/cmd/arming [true|false]" //where true|false is armed/isn't armed
 			
-			//NOTE: both arming and setting to offboard are already implemented in the code, the above is to do so from the command line
+		//NOTE: both arming and setting to offboard are already implemented in the code, the above is to do so from the command line
 	
 	Sending Velocities:	
 		"rostopic pub /mavros/setpoint_vecity/cmd_vel geometry_msgs/TwistStamped {'header: {stamp: now}, twist: {linear: {x: 1, y: 0, z: 0}}'} -r 60 "
@@ -43,5 +43,5 @@ SENDING COMMANDS (format):
 		
 	ROS Topic Commands:
 		rostopic list //gives all currently defined topics
-    rostopic info [topic_name] //tells you everything about a topic 
+    		rostopic info [topic_name] //tells you everything about a topic 
 		rostopic echo [topic_name] //outputs messages published to [topic_name]
