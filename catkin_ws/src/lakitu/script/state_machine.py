@@ -4,11 +4,16 @@ import rospy, mavros
 import math, smach, smach_ros
 from mavros_msgs.srv import CommandBool, SetMode, ParamGet
 from mavros_msgs.msg import State, RCIn
+from nav_msgs.msg import Odometry
 from geometry_msgs.msg import PoseStamped, TwistStamped
+
+from mav_datalink import MavHeartbeatThread
+
 
 # initializing global variables to NONE
 rcNum = None
 current_state = None
+current_pos = None
 target = None
 
 # callback that reads the /mavros/state topic
@@ -29,6 +34,11 @@ def getFlightTarget(data):
 	global target
 	target = data
 
+def getCurrentPosition(data):
+
+	global current_pos
+	current_pos = data	
+
 
 class Preflight(smach.State):
 
@@ -38,15 +48,24 @@ class Preflight(smach.State):
 		smach.State.__init__(self, outcomes=['toTAKEOFF','toFLIGHT'])
 		
 	def execute(self, userdata):
+
+		# heartbeat = MavHeartbeatThread()
+		# heartbeat.run()
 		
-		rate = rospy.Rate(60)
+		rate = rospy.Rate(30)
 
 		while not rospy.is_shutdown():
+
+			rate.sleep()
 			
 			# does nothing if mavros is not up and running yet (/mavros/state)
 			if (current_state is None):
 				rospy.loginfo('MAVROS NOT RUNNING')
 				continue
+
+			if (current_pos is None):
+				rospy.loginfo('NO ODOMETRY DATA')
+				continue	
 
 			#does nothing if no target is published	(/lakitu/flight_target)
 			if(target is None):
@@ -58,7 +77,7 @@ class Preflight(smach.State):
 				rospy.loginfo("RC SWITCH: ON")
 				return 'toTAKEOFF'
 
-			rate.sleep() # sleep for 1/60th of a second
+			
 
 
 class Takeoff(smach.State):
@@ -76,7 +95,8 @@ class Takeoff(smach.State):
 
 		try:
 			takeoffAltSrv = rospy.ServiceProxy('/mavros/param/get', ParamGet)	
-			self.targetAlt = takeoffAltSrv('MIS_TAKEOFF_ALT')
+			takeoffResponse = takeoffAltSrv('MIS_TAKEOFF_ALT')
+			self.targetAlt = takeoffResponse.value.real
 
 		except rospy.ServiceException, e:
 			rospy.loginfo('Service call failed: %s' %e)	
@@ -85,37 +105,46 @@ class Takeoff(smach.State):
 
 		self.getTakeoffAlt()
 		rospy.loginfo(self.targetAlt)
-		
-		#checks for built-in PX4 takeoff state and if we have a flight target
-		if ((current_state.mode != 'AUTO.TAKEOFF') and (target is not None)):	
-			try:	#service call to set mode to takeoff
-				setModeSrv = rospy.ServiceProxy("/mavros/set_mode", SetMode) #http://wiki.ros.org/mavros/CustomModes
-				setModeResponse = setModeSrv(0, 'AUTO.TAKEOFF')
-				rospy.loginfo(str(setModeResponse) + '\nMODE: %s' % current_state.mode)
 
-			except rospy.ServiceException, e:
-				rospy.loginfo('Service call failed: %s' %e)
+		rate = rospy.Rate(30)
 
-		if (not current_state.armed):
-			armCommandSrv = rospy.ServiceProxy("/mavros/cmd/arming", CommandBool)		
-			armResponse = armCommandSrv(True)
-			rospy.loginfo(armResponse)
+		while not rospy.is_shutdown():
+			#checks for built-in PX4 takeoff state and if we have a flight target
 
-		if (current_state.mode == 'AUTO.TAKEOFF'):
-			return 'toFLIGHT'
-		else:
-			return 'toPREFLIGHT'		
+			if (not current_state.armed):
+				armCommandSrv = rospy.ServiceProxy("/mavros/cmd/arming", CommandBool)		
+				armResponse = armCommandSrv(True)
+				rospy.loginfo(armResponse)
+
+			if ((current_state.mode != 'AUTO.TAKEOFF') and (target is not None) and current_state.armed):	
+				try:	#service call to set mode to takeoff
+					setModeSrv = rospy.ServiceProxy("/mavros/set_mode", SetMode) #http://wiki.ros.org/mavros/CustomModes
+					setModeResponse = setModeSrv(0, 'AUTO.TAKEOFF')
+					# rospy.loginfo(str(setModeResponse) + '\nMODE: %s' % current_state.mode)
+
+				except rospy.ServiceException, e:
+					rospy.loginfo('Service call failed: %s' %e)
+
+
+			if (current_pos.pose.pose.position.z <= (self.targetAlt + float(.1)) and  current_pos.pose.pose.position.z >= (self.targetAlt - float(.1))):
+				return 'toFLIGHT'
+
+			# if (current_state.mode == 'AUTO.TAKEOFF'):
+			# 	if (current_pos.pose.pose.position.z <= (self.targetAlt + .1) and  current_pos.pose.pose.position.z >= (self.targetAlt - .1)):
+			# 		return 'toFLIGHT'	
+
+			rate.sleep()		
 
 
 class Flight(smach.State):
 
 	def __init__(self):
-		smach.State.__init__(self, outcomes=['toPREFLIGHT'])
+		smach.State.__init__(self, outcomes=['toPREFLIGHT','exit'])
 
 	def execute(self, userdata):
 		# pass
 		rospy.loginfo("FLIGHT REACHED")
-		return 'toPREFLIGHT'	
+		return 'exit'
 
 def main():
 	
@@ -124,6 +153,7 @@ def main():
 	rospy.Subscriber("/mavros/state", State, getMavrosState) #provides mavros state (connected, flight mode, etc.)
 	rospy.Subscriber("/mavros/rc/in", RCIn, getRCChannels) #subscribe to mavros topic for RC Data
 	rospy.Subscriber("/lakitu/flight_target", PoseStamped, getFlightTarget) #tells where we're going
+	rospy.Subscriber('/mavros/local_position/odom', Odometry, getCurrentPosition) #gives current, continuous position
 
 	sm = smach.StateMachine(outcomes=['exit_sm'])
 
@@ -132,7 +162,7 @@ def main():
 
 		smach.StateMachine.add('PREFLIGHT', Preflight(), transitions={'toTAKEOFF': 'TAKEOFF','toFLIGHT':'FLIGHT'})
 		smach.StateMachine.add('TAKEOFF', Takeoff(), transitions={'toPREFLIGHT': 'PREFLIGHT','toFLIGHT': 'FLIGHT'})
-		smach.StateMachine.add('FLIGHT', Flight(), transitions={'toPREFLIGHT':'PREFLIGHT'})
+		smach.StateMachine.add('FLIGHT', Flight(), transitions={'toPREFLIGHT':'PREFLIGHT','exit':'exit_sm'})
 
 	outcome = sm.execute()	
 	
