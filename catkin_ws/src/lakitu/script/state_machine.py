@@ -2,68 +2,137 @@
 
 import rospy, mavros
 import math, smach, smach_ros
-from mavros_msgs.srv import CommandBool, SetMode
+from mavros_msgs.srv import CommandBool, SetMode, ParamGet
 from mavros_msgs.msg import State, RCIn
 from geometry_msgs.msg import PoseStamped, TwistStamped
-from custom_msgs.msg import StateMachine
+
+# initializing global variables to NONE
+rcNum = None
+current_state = None
+target = None
+
+# callback that reads the /mavros/state topic
+def getMavrosState(data):
+
+	global current_state
+	current_state = data	
+
+# callback that reads the /mavros/rc/in topic
+def getRCChannels(data):
+
+	global rcNum
+	rcNum = data.channels[6]	
+
+# callback that reads the /lakitu/flight_target topic 
+def getFlightTarget(data):
+
+	global target
+	target = data
+
 
 class Preflight(smach.State):
 
-	def getMavrosState(data):
-
-		global current_state
-		current_state = data	
+	'''PREFLIGHT state houses all 'preflight checks' and sets up for following states, always comes first'''
 
 	def __init__(self):
-		smach.State.__init__(self, outcomes=['outcome1'])
+		smach.State.__init__(self, outcomes=['toTAKEOFF','toFLIGHT'])
 		
 	def execute(self, userdata):
 		
 		rate = rospy.Rate(60)
+
+		while not rospy.is_shutdown():
 			
+			# does nothing if mavros is not up and running yet (/mavros/state)
+			if (current_state is None):
+				rospy.loginfo('MAVROS NOT RUNNING')
+				continue
 
-class Foo(smach.State):
+			#does nothing if no target is published	(/lakitu/flight_target)
+			if(target is None):
+				continue	
+
+			#listens for RC switch, if ON (2113) switches to TAKEOFF state
+			#rcNum is from function getRCChannels()
+			if rcNum == 2113: 
+				rospy.loginfo("RC SWITCH: ON")
+				return 'toTAKEOFF'
+
+			rate.sleep() # sleep for 1/60th of a second
+
+
+class Takeoff(smach.State):
+
+	'''dont use offboard mode for takeoff, moron'''
 
 	def __init__(self):
-		smach.State.__init__(self, outcomes=['exit','toBAR'])
+		smach.State.__init__(self, outcomes=['toPREFLIGHT','toFLIGHT'])
+
+	def getTakeoffAlt(self):
+
+		'''reading the PX4 param 'MIS_TAKEOFF_ALT'
+		useful method to read any PX4 param in script
+		https://docs.px4.io/en/advanced_config/parameter_reference.html'''
+
+		try:
+			takeoffAltSrv = rospy.ServiceProxy('/mavros/param/get', ParamGet)	
+			self.targetAlt = takeoffAltSrv('MIS_TAKEOFF_ALT')
+
+		except rospy.ServiceException, e:
+			rospy.loginfo('Service call failed: %s' %e)	
+
+	def execute(self, userdate):
+
+		self.getTakeoffAlt()
+		rospy.loginfo(self.targetAlt)
 		
-		# rospy.init_node('preflight_node', anonymous=True)
-		self.counter = 0
+		#checks for built-in PX4 takeoff state and if we have a flight target
+		if ((current_state.mode != 'AUTO.TAKEOFF') and (target is not None)):	
+			try:	#service call to set mode to takeoff
+				setModeSrv = rospy.ServiceProxy("/mavros/set_mode", SetMode) #http://wiki.ros.org/mavros/CustomModes
+				setModeResponse = setModeSrv(0, 'AUTO.TAKEOFF')
+				rospy.loginfo(str(setModeResponse) + '\nMODE: %s' % current_state.mode)
 
-	def execute(self, userdata):
-		rospy.loginfo('Exectuing state FOO')
-		if self.counter < 3:
-			self.counter += 1
-			return 'outcome2'
+			except rospy.ServiceException, e:
+				rospy.loginfo('Service call failed: %s' %e)
+
+		if (not current_state.armed):
+			armCommandSrv = rospy.ServiceProxy("/mavros/cmd/arming", CommandBool)		
+			armResponse = armCommandSrv(True)
+			rospy.loginfo(armResponse)
+
+		if (current_state.mode == 'AUTO.TAKEOFF'):
+			return 'toFLIGHT'
 		else:
-			return 'outcome1'	
+			return 'toPREFLIGHT'		
 
-class Bar(smach.State):
+
+class Flight(smach.State):
+
 	def __init__(self):
-		smach.State.__init__(self, outcomes=['outcome1'])
+		smach.State.__init__(self, outcomes=['toPREFLIGHT'])
 
 	def execute(self, userdata):
-		rospy.loginfo('Executing state BAR')
-		return 'outcome1'		
+		# pass
+		rospy.loginfo("FLIGHT REACHED")
+		return 'toPREFLIGHT'	
 
 def main():
 	
 	rospy.init_node('laki2_sm', anonymous=True)
 	
-	rospy.Subscriber("/mavros/state", State, self.getMavrosState)
-
-	armCommandSrv = rospy.ServiceProxy("/mavros/cmd/arming", CommandBool)
-	setModeSrv = rospy.ServiceProxy("/mavros/set_mode", SetMode) #http://wiki.ros.org/mavros/CustomModes
+	rospy.Subscriber("/mavros/state", State, getMavrosState) #provides mavros state (connected, flight mode, etc.)
+	rospy.Subscriber("/mavros/rc/in", RCIn, getRCChannels) #subscribe to mavros topic for RC Data
+	rospy.Subscriber("/lakitu/flight_target", PoseStamped, getFlightTarget) #tells where we're going
 
 	sm = smach.StateMachine(outcomes=['exit_sm'])
 
-    # Open the container
+    # Open the container, declare the SMACH states
 	with sm:
 
-		smach.StateMachine.add('FOO', Foo(), transitions={'exit':'exit_sm', 'toBAR':'BAR'})
-		smach.StateMachine.add('BAR', Bar(), transitions={'outcome1':'FOO'})
-		smach.StateMachine.add('PREFLIGHT', Preflight(), transitions={'outcome1':'FOO'})
-
+		smach.StateMachine.add('PREFLIGHT', Preflight(), transitions={'toTAKEOFF': 'TAKEOFF','toFLIGHT':'FLIGHT'})
+		smach.StateMachine.add('TAKEOFF', Takeoff(), transitions={'toPREFLIGHT': 'PREFLIGHT','toFLIGHT': 'FLIGHT'})
+		smach.StateMachine.add('FLIGHT', Flight(), transitions={'toPREFLIGHT':'PREFLIGHT'})
 
 	outcome = sm.execute()	
 	

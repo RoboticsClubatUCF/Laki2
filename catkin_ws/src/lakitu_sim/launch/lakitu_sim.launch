@@ -7,14 +7,14 @@
 
 	<include file="$(find px4)/launch/mavros_posix_sitl.launch">
 		<!-- <arg name="sdf" value="son_iris"/> -->
-		<arg name="sdf" value="$(find lakitu)/models/son_iris/model.sdf"/>
+		<arg name="sdf" value="$(find lakitu)/models/iris/iris.sdf"/>
 		<arg name="paused" value="false"/>
 		<!-- <arg name="headless" value="true"/> -->
 	</include>
 
 	<node pkg="lakitu" type="init.py" name="init_node" />
 	<node pkg="lakitu" type="preflight.py" name="preflight_node" />
-	<node pkg="lakitu" type="takeoff.py" name="takeoff_node" />	
+	<node pkg="lakitu" type="takeoff2.py" name="takeoff_node" />	
 	<node pkg="lakitu" type="flight.py" name="flight_node" />
 	<node pkg="lakitu" type="hover.py" name="hover_node" />
 	<!-- <node pkg="lakitu" type="ekf.py" name="ekf_node" /> -->

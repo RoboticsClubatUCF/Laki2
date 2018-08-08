@@ -1,0 +1,19 @@
+<?xml version="1.0"?>
+
+<!-- literally just a wrapper to launch state-machine node and mavros_posix_sitl.launch -->
+
+
+<launch>
+
+	<include file="$(find px4)/launch/mavros_posix_sitl.launch">
+		<!-- <arg name="sdf" value="son_iris"/> -->
+		<arg name="sdf" value="$(find lakitu)/models/iris/iris.sdf"/>
+		<arg name="paused" value="false"/>
+		<!-- <arg name="headless" value="true"/> -->
+	</include>
+
+	<!-- to see output of state machine, add output="screen" to following line -->
+	<node pkg="lakitu" type="state_machine.py" name="laki2_sm" output="screen"/>
+
+
+</launch>	
