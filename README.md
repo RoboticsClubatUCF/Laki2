@@ -1,1 +1,1 @@
-# IARC-UCF
+# RUCF's SUAS entry
