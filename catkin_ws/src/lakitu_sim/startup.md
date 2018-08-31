@@ -42,3 +42,7 @@ SENDING COMMANDS (format):
 		rostopic list //gives all currently defined topics
     rostopic info [topic_name] //tells you everything about a topic 
 		rostopic echo [topic_name] //outputs messages published to [topic_name]
+
+DOCS:
+	
+	mavlink.org/messages/common		

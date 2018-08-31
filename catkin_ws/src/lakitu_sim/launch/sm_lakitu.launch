@@ -14,6 +14,7 @@
 
 	<!-- to see output of state machine, add output="screen" to following line -->
 	<node pkg="lakitu" type="state_machine.py" name="laki2_sm" output="screen"/>
+	<node pkg="lakitu" type="mav_datalink.py" name='mav_data' output="screen"/>
 
 
 </launch>	

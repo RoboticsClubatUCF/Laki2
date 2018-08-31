@@ -7,14 +7,12 @@ from mavros_msgs.msg import State, RCIn
 from nav_msgs.msg import Odometry
 from geometry_msgs.msg import PoseStamped, TwistStamped
 
-from mav_datalink import MavHeartbeatThread
-
-
 # initializing global variables to NONE
 rcNum = None
 current_state = None
 current_pos = None
 target = None
+gotTarget = False
 
 # callback that reads the /mavros/state topic
 def getMavrosState(data):
@@ -32,6 +30,8 @@ def getRCChannels(data):
 def getFlightTarget(data):
 
 	global target
+	global gotTarget
+	gotTarget = True
 	target = data
 
 def getCurrentPosition(data):
@@ -49,9 +49,6 @@ class Preflight(smach.State):
 		
 	def execute(self, userdata):
 
-		# heartbeat = MavHeartbeatThread()
-		# heartbeat.run()
-		
 		rate = rospy.Rate(30)
 
 		while not rospy.is_shutdown():
@@ -68,7 +65,7 @@ class Preflight(smach.State):
 				continue	
 
 			#does nothing if no target is published	(/lakitu/flight_target)
-			if(target is None):
+			if(not gotTarget):
 				continue	
 
 			#listens for RC switch, if ON (2113) switches to TAKEOFF state
@@ -77,12 +74,11 @@ class Preflight(smach.State):
 				rospy.loginfo("RC SWITCH: ON")
 				return 'toTAKEOFF'
 
-			
 
 
 class Takeoff(smach.State):
 
-	'''dont use offboard mode for takeoff, moron'''
+	'''uses built-in AUTO.TAKEOFF to lift to a parameter-set altitude (2.5m by default)'''
 
 	def __init__(self):
 		smach.State.__init__(self, outcomes=['toPREFLIGHT','toFLIGHT'])
@@ -101,7 +97,7 @@ class Takeoff(smach.State):
 		except rospy.ServiceException, e:
 			rospy.loginfo('Service call failed: %s' %e)	
 
-	def execute(self, userdate):
+	def execute(self, userdata):
 
 		self.getTakeoffAlt()
 		rospy.loginfo(self.targetAlt)
@@ -140,11 +136,35 @@ class Flight(smach.State):
 
 	def __init__(self):
 		smach.State.__init__(self, outcomes=['toPREFLIGHT','exit'])
+		self.target_pub = rospy.Publisher('/mavros/setpoint_position/local', PoseStamped, queue_size=100)
+		# self.target_pub = None
+		
+	def setpoint_flight(self,target):
+			
+		self.target_pub.publish(target)
 
 	def execute(self, userdata):
-		# pass
+		
 		rospy.loginfo("FLIGHT REACHED")
-		return 'exit'
+
+		rate = rospy.Rate(30)
+
+		rospy.Subscriber("/lakitu/flight_target", PoseStamped, self.setpoint_flight) #tells where we're going
+
+		
+
+		while not rospy.is_shutdown():
+
+			if ((current_state.mode != 'OFFBOARD') and (gotTarget) and current_state.armed):	
+				try:	#service call to set mode to OFFBOARD
+					setModeSrv = rospy.ServiceProxy("/mavros/set_mode", SetMode) #http://wiki.ros.org/mavros/CustomModes
+					setModeResponse = setModeSrv(0, 'OFFBOARD')
+					# rospy.loginfo(str(setModeResponse) + '\nMODE: %s' % current_state.mode)
+
+				except rospy.ServiceException, e:
+					rospy.loginfo('Service call failed: %s' %e)
+
+			rate.sleep()
 
 def main():
 	
@@ -163,6 +183,9 @@ def main():
 		smach.StateMachine.add('PREFLIGHT', Preflight(), transitions={'toTAKEOFF': 'TAKEOFF','toFLIGHT':'FLIGHT'})
 		smach.StateMachine.add('TAKEOFF', Takeoff(), transitions={'toPREFLIGHT': 'PREFLIGHT','toFLIGHT': 'FLIGHT'})
 		smach.StateMachine.add('FLIGHT', Flight(), transitions={'toPREFLIGHT':'PREFLIGHT','exit':'exit_sm'})
+
+	introspec = smach_ros.IntrospectionServer('server', sm, '/SM')
+	introspec.start()
 
 	outcome = sm.execute()	
 	
