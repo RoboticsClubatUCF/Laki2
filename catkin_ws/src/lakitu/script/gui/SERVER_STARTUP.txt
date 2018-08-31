@@ -1,0 +1,13 @@
+This is a quick reference for the information on the "Getting started" section
+located here: https://auvsi-suas-competition-interoperability-system.readthedocs.io/en/latest/getting_started.html#prerequisites
+
+Client library can be located here:
+https://auvsi-suas-competition-interoperability-system.readthedocs.io/en/latest/client.html
+
+# start server
+cd ~/interop
+sudo ./server/run.sh
+
+# start and stop docker
+sudo docker stop interop-server
+sudo docker start interop-server
