@@ -7,6 +7,10 @@ from mavros_msgs.msg import State, RCIn
 from nav_msgs.msg import Odometry
 from geometry_msgs.msg import PoseStamped, TwistStamped
 
+
+''' the main states for Laki2's state machine (SMACH)'''
+
+
 # initializing global variables to NONE
 rcNum = None
 current_state = None
@@ -134,6 +138,9 @@ class Takeoff(smach.State):
 
 class Flight(smach.State):
 
+
+	'''A flight mode that allows for changing of flight targets midair'''
+
 	def __init__(self):
 		smach.State.__init__(self, outcomes=['toPREFLIGHT','exit'])
 		self.target_pub = rospy.Publisher('/mavros/setpoint_position/local', PoseStamped, queue_size=100)
@@ -184,8 +191,8 @@ def main():
 		smach.StateMachine.add('TAKEOFF', Takeoff(), transitions={'toPREFLIGHT': 'PREFLIGHT','toFLIGHT': 'FLIGHT'})
 		smach.StateMachine.add('FLIGHT', Flight(), transitions={'toPREFLIGHT':'PREFLIGHT','exit':'exit_sm'})
 
-	introspec = smach_ros.IntrospectionServer('server', sm, '/SM')
-	introspec.start()
+	introspect = smach_ros.IntrospectionServer('server', sm, '/SM')
+	introspect.start()
 
 	outcome = sm.execute()	
 	
