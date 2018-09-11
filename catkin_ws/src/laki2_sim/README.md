@@ -16,7 +16,7 @@ SETUP:
 
 LAUNCHING SIMULATOR:
 	
-	roslaunch lakitu_sim [launch_file]
+	roslaunch laki2_sim [launch_file] 
   
   Publishing flight targets: (MUST BE DONE FIRST)
 	
