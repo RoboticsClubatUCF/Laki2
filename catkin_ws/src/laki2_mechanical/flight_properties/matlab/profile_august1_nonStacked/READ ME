@@ -1,0 +1,7 @@
+READ ME
+
+Issues Fixed:
+1) In speedCalculator, calculating climbSpeed was made more readable
+2) In speedCalculator, when calculating climbSpeed, alpha for airDrag should be 0
+3) In speedCalculator, calculating climbSpeed was very wrong, see lines 75, 79, and 84 for reference.
+4) In speedCalcuator, moved calculating climbSpeed to climbSpeedCalculator. No reason to spend time calculating it if it is not needed
