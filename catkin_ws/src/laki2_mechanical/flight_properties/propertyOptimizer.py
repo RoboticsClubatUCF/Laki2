@@ -104,7 +104,7 @@ def thrust(motorRPM, propSpec, speed, alpha, isStacked):
     # exitVelocity is the speed in m/s of the air after is has gone thru the prop
     # This is based on the definition of propeller pitch
     # Multiplied by constants for unit conversions
-    exitVelocity = motorRPM * propPitch * 0.0254 / 60
+    exitVelocity = np.sqrt(2) * motorRPM * propPitch * 0.0254 / 60
 
     if isStacked:
         exitVelocity *= stackedCoeff
@@ -113,13 +113,10 @@ def thrust(motorRPM, propSpec, speed, alpha, isStacked):
     # Multiplied by constant for unit conversion
     diskArea = np.pi * (0.0254 * propDiameter / 2) ** 2
     
-    propVelocity = 0.5 * (2 * exitVelocity + np.sin(alpha) * speed)
-
-    # For some reason thrust only matches xcopter if this is doubled
-    #propVelocity *= 2
+    propVelocity = 0.5 * (exitVelocity + np.sin(alpha) * speed)
 
     # Prop Slip
-    propVelocity *= 0.98
+    propVelocity *= 0.95
 
     # mass flow rate = density * area * propeller velocity
     massFlowRate = (airDensity * diskArea) * propVelocity
@@ -128,7 +125,6 @@ def thrust(motorRPM, propSpec, speed, alpha, isStacked):
     thrustY = massFlowRate * exitVelocity * np.cos(alpha)
 
     return (thrustX, thrustY, exitVelocity, propVelocity)
-
 
 #----------------------------------------------------------------------------------#
 
@@ -182,8 +178,8 @@ def speed(weight, numMotors, numArms, motorRPM, propSpec):
 
         # Assume some thrust to weight ratio that increases linear with speed
         # Assumed because controlling vehicle requires ratio greater than 1.0
-        #   Assumed 1.3 at hover and an additional 1.0 for every 10 m/s of speed
-        thrustToWeight = (1.3 + 1.0 * speed / 10)
+        #   Assumed 1.4 at hover and an additional 1.0 for every 10 m/s of speed
+        thrustToWeight = (1.4 + 1.0 * speed / 10)
 
         # netVerticalThrust is (weight - verticalThrust)
         #   increased, 'artifical',  weight is necessary for control of vehicle
@@ -227,8 +223,7 @@ def speed(weight, numMotors, numArms, motorRPM, propSpec):
 
 # All constants for item weights are in grams. Converted to N in last step
 
-def weight(numMotors, numArms, motorSpec, batteryCapacity, numBatteryCells, 
-        propDiameter, isPayloadAttached):   
+def weight(numMotors, numArms, motorSpec, batteryCapacity, numBatteryCells, propDiameter, isPayloadAttached):   
     # Values obtained from gram scale at robotics
     esc = 10
     jetson = 144.0
@@ -242,7 +237,7 @@ def weight(numMotors, numArms, motorSpec, batteryCapacity, numBatteryCells,
     usbHub = 30.34
     electronicsHardware = 68.0
     radioTransceiver = 23.0
-    landingLegs = 164.0
+    landingLegs = 200.0
     cameras = 3 * 19.5
     oneTB_SSD_Harddrive = 81.65
     
@@ -286,21 +281,26 @@ def weight(numMotors, numArms, motorSpec, batteryCapacity, numBatteryCells,
     # Property specific to each motor
     motor = motorSpec[5]
 
-    # Weight of 16mm carbon tube based on creo model
-    armPerIn = 17.004/8.66142
+    # Estimate weight of 25mm carbon tube based on creo model
+    armPerIn = 17.004 / 16 * 25 / 8.66142
 
     # Estimate from Creo Model (includes weight of clamps on both sides of arm
-    genericArm = 31.69
-    armWeight = genericArm + (armPerIn * ((propDiameter / 2) - 0.75))
+    genericArm = 53.4 + 16
+    armWeight = genericArm + (8 + armPerIn * ((propDiameter / 2) - 0.75))
 
     # Estimate Battery Weights
     # Based off ncr batteries (ncr more energy dense that lipo)
     batteryPerCellPerMilliAmpHr = 0.0153
     batteryWeight = numBatteryCells * batteryCapacity * batteryPerCellPerMilliAmpHr
 
+    # XOAR 18in prop weighs 31g
+    propWeight = 31/18 * propDiameter
+
     # totalWeight in lb
-    totalWeight = (armWeight * numArms + (esc + motor) * numMotors + torso + payload 
-            + batteryWeight)
+    totalWeight = armWeight * numArms 
+    totalWeight += (esc + motor) * numMotors 
+    totalWeight += torso + payload + batteryWeight
+    totalWeiht += propWeight * numMotors
     
     # Convert from g to N
     totalWeight *= 9.81 / 1000
@@ -327,8 +327,7 @@ def weight(numMotors, numArms, motorSpec, batteryCapacity, numBatteryCells,
 #   dist is a list with the pre and post drop distances needed to travel by the 
 #       vehicle (in that order), in meters
 
-def batteryCapacity(motorRPMs, motorSpec, numMotors, numArms, numBatteryCells, 
-            propSpec, dists):
+def batteryCapacity(motorRPMs, motorSpec, numMotors, numArms, numBatteryCells, propSpec, dists):
     # isStacked is a constant based off the given number of motors and arms
     isStacked = not (numMotors == numArms)
     
@@ -476,8 +475,7 @@ def batteryCapacity(motorRPMs, motorSpec, numMotors, numArms, numBatteryCells,
 
 # returns (totalPower, motorCurrent)
 
-def powerConsumption(motorRPM, motorSpec, voltage, numMotors, propSpec, speed, 
-        alpha, isStacked):
+def powerConsumption(motorRPM, motorSpec, voltage, numMotors, propSpec, speed, alpha, isStacked):
     
     # Propeller Information
     propDiameter, propPitch = propSpec[0:2]
@@ -577,13 +575,8 @@ def aerodynamicWork(motorRPM, propSpec, speed, alpha, isStacked):
     # Rotational speed in rad/s
     omega = motorRPM * 2 * np.pi / 60
 
-    # Estimate losses (quadratic wrt exitVelocity, linear wrt air density and dia)
-    c2 = 0.75
-    c1 = 6
-    losses = airDensity * propDiameter * 0.0254 * (
-            c2 * exitVelocity**2 + c1 * exitVelocity)
-
-    power += losses
+    # Assume 80% efficiency
+    power /= 0.8
 
     torque = power / omega
 
@@ -592,7 +585,6 @@ def aerodynamicWork(motorRPM, propSpec, speed, alpha, isStacked):
 #----------------------------------------------------------------------------------#
 
 # Calculates the max torque of a motor at a given RPM.
-# TO DO: This
 # returns torque
 
 def maxMotorTorque(motorRPM, motorSpec, maxVoltage):
@@ -612,26 +604,37 @@ def maxMotorTorque(motorRPM, motorSpec, maxVoltage):
 
 #----------------------------------------------------------------------------------#
 
+def optimalMotorRPM(weight, numMotors, numArms, motorSpec, propSpec, maxVoltage):
+    (maxMotorTorue > aerodynamicWork[1])
+    maximize (speed[0] / powerConsumption[0])
+    powerConsumption[1] < motorSpec[4]
+
+#----------------------------------------------------------------------------------#
+
 def main():
     voltage = 21.14
 
+    # Motor Data
     Kv = 320 * 2 * np.pi / 60
     Kt = 1/Kv
-
     motorSpec = [0.116, Kv, Kt, 7, 50, 165]    
+    
     numMotors = 8
     isStacked = 0
     numArms = 8
     numBatteryCells = 6
 
+    # Propeller Data
     propDiameter = 18
     propPitch = 5.5
     propConst = 1.11
     propSpec = [propDiameter, propPitch, propConst]
 
-    motorRPM = 5132
+    dists = [6437.38, 4828.03]
 
-    heavy = weight(8, 8, motorSpec, 64000, 6, 18, 1)
+    motorRPM = 5084
+
+    heavy = weight(8, 8, motorSpec, 0, 6, 18, 1)
     print "weight: ", heavy
 
     print "thrust: ", thrust(motorRPM, propSpec, 0, 0, isStacked)

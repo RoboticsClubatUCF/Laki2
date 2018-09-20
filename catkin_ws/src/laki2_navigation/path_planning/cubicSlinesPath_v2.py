@@ -272,12 +272,11 @@ def makeRandomCircles(numCircles, wpx, wpy):
 # Given 3 lists, a list for each of the x, and y coordinates of waypoints, as well
 #   as an init spacing for the parameter. Initial spacing must be stricly increasing
 # Lists need to be of the same length
-# For now, minimizes the curve length of the spline
-# Eventually, will minimize the energy used by the vehicle
+# Pass a costFunction that evaluates the cost of the spline
 
 # If successful, returns (t_opt, True) where t_opt is the optimal spacing
 # If unsuccessful, returns (t, False) where t is the original spacing
-def optimizeParameterSpacing(wpx, wpy, t):
+def optimizeParameterSpacing(wpx, wpy, t, costFunc):
     def evalSpacing(x):
         # The first two parameters are fixed
         # Any scalar multiple of the spacing results in the same spline
@@ -293,8 +292,8 @@ def optimizeParameterSpacing(wpx, wpy, t):
         csx = CubicSpline(spacing, wpx)
         csy = CubicSpline(spacing, wpy)
 
-        # Return some 
-        return arcLength(csx, csy)
+        # Return some cost of the spline
+        return costFunc(csx, csy)
     #--------------------------------#
 
     x0 = []
@@ -339,6 +338,108 @@ def optimizeParameterSpacing(wpx, wpy, t):
 
 #----------------------------------------------------------------------------------#
 
+# csx is the cubic spline of x as a function of t
+# csy is the cubic spline of y as a function of t
+
+# tVals is the list of parametric points serving as the knots for the cubic spline
+
+# poly is of the form [pt-1, pt-2, ... pt-n] where each pt represents a vertice of
+#   the competition boundary
+
+# Returns a list of collision tuples. 
+#   Each collision has the form (intersectionPts, ptOfInterest, circle)
+#   Where intersectionPts are the two pts that intersect the circle. Only values
+#       between the intersection points are inside the circle
+#   ptOfInterest is the point between a par of intersection points that is closest 
+#       the the center of the circle
+
+def cubicSplinePolygonCollisions(csx, csy, tVals, poly):
+    # Equation of a line:
+    #   y = m*x + k
+    # x is defined in terms of t by csx
+    # y is defined in terms of t by csy
+
+    # collisions is the list to return
+    collisions = []
+
+    intersections = []
+
+    distToInitPt = np.linalg.norm([(csx(tVals[0]) - poly[0][0]), 
+            (csy(tVals[0]) - poly[0][1])])
+
+    distToFinPt = np.linalg.norm([(csx(tVals[-1]) - poly[0][0]), 
+            (csy(tVals[-1]) - poly[0][1])])
+
+    resetCritPts = True
+
+    # Loop through all segments of the given cubic spline
+    for i in xrange(len(tVals) - 1):
+        # tX is a list of the coefficients of the equation x = At^3 + Bt^2 + Ct + D
+        # tY is a list of the coefficients of the equation y = at^3 + bt^2 + ct + d 
+        tX = [csx.c[0][i], csx.c[1][i], csx.c[2][i], csx.c[3][i]]
+        tY = [csy.c[0][i], csy.c[1][i], csy.c[2][i], csy.c[3][i]]
+
+        # Loop through all lines of the polygon
+        for j in xrange(len(poly)):
+            x = (poly[j-1][0], poly[j][0])
+            y = (poly[j-1][1], poly[j][1])
+
+            # Equation of a line
+            # y = m*x + k
+
+            # Calculate intersection points between line and cubic function
+            #   y = m*x + k
+            #   x = At^3 + Bt^2 + Ct + D
+            #   y = at^3 + bt^2 + ct + d
+            #   Therefore:
+            #       0 = (a - m*A)t^3 + (b - m*B)t^2 + (c - m*C)t + (d - mD - k)
+
+            if ((x[0] - x[1]) == 0):
+                # Equation of a line is x = h bc slope is infinite
+                # Intersection point is slightly easier
+                # 0 = At^3 + Bt^2 + Ct + (D - h)
+                coef = copy.copy(tX)
+                coef[3] -= x[0]
+
+            else:
+                # Calculate the slope of the line
+                m = (y[0] - y[1]) / (x[0] - x[1])
+                
+                # Calculate the y intercept of both line segments
+                k = y[0] - (m * x[0])
+
+                coef = [(tY[0] - m*tX[0]),
+                        (tY[1] - m*tx[1]), 
+                        (tY[2] - m*tx[2]),
+                        (tY[3] - m*tx[3] - k)]
+
+
+            # np.roots() to solve for 0's of coeff
+            # Only keep intersection points that are within the bounds of the spline
+            # Only keep intersection points that are within the bounds the line 
+            #   segment polygon
+
+            # Calculate pts of interest if intersection points exist
+            #   Rotate abt origin
+            #   Find critical points wrt t' (rotated parametric function independent 
+            #       variable)
+            #   Rotate (t', y') back into (x, y) plane
+            #   Find value of t that aligns with pt of interest
+
+
+#----------------------------------------------------------------------------------#
+
+# csx and csy are the parametric cubic splines with knots at the points in t
+# collisions is a list of collision objects
+# Collision object is of the form (intersectionPts, ptOfInterest, circle)
+#   or (intersectionPts, ptOfInterest, line)
+
+def fixIntersections(csx, csy, t, collisions):
+    # TO DO
+    return 0
+
+#----------------------------------------------------------------------------------#
+
 def main():
     # Initialize Figure
     fig, ax = plt.subplots()
@@ -350,6 +451,21 @@ def main():
     wpyInit = [500, 600, 375, 390, 650, 650, 200]
     plt.plot(wpxInit, wpyInit, 'x', label ='data', color = (0,0,0,1))
 
+    # Makes parameter spacing to be constant
+    n = len(wpxInit)
+    t = np.arange(n)
+
+    csx = CubicSpline(t, wpxInit, bc_type = ((1, slopeY), 'not-a-knot'))
+    csy = CubicSpline(t, wpyInit, bc_type = ((1, slopeX), 'not-a-knot'))
+
+    # Plot parametric cubic splines
+    s = 0.01
+    tSpace = np.arange(t[0], t[n-1] + s, s)
+    plt.plot(csx(tSpace), csy(tSpace))
+
+    poly = [(250, 500), (700, 400), (800, 600), (400, 200)]
+
+    """
     # Starting Point will have some slope dependent on vehicle heading
     slope = (wpyInit[0] - wpyInit[1]) / (wpxInit[0] - wpxInit[1])
     slopeY = slope
@@ -424,7 +540,7 @@ def main():
 
     for collision in collisions:
         x, y = csx(collision[1]), csy(collision[1])
-
+    """
 
 
 
