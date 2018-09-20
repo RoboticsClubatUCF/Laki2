@@ -6,10 +6,9 @@ from nav_msgs.msg import Odometry
 import Image, urllib, StringIO
 from math import log, exp, tan, atan, pi, ceil
 
-import interop # for interfacing with serverc
+from Server import Server # for interfacing with Server
 
-# client interacts with the interoperability system to get mission data
-client = interop.Client("http://localhost:8000", "testuser", "testpass", 10, 10)
+Server = Server()
 
 # variables updated by ROS (initialized here to ensure global access)
 rosGpsData = None
@@ -44,6 +43,7 @@ def GetGpsCoords_helper(data):
 	rosGpsData = data
 	latitude = data.latitude
 	longitude = data.longitude
+
 
 # initializes all needed ROS nodes
 def init_ros():
@@ -180,7 +180,12 @@ def clickCallback(event):
 
 	makeCircle((lat, lon), 15, "orange")
 
-# returns GPS coords for each corner in the flight zone as given by the server
+	print "waypoints1 = " + str(Server.mission_waypoints)
+	Server.add_mission_waypoint((lat, lon), 0)
+	print "waypoints2 = " + str(Server.mission_waypoints)
+	
+
+# returns GPS coords for each corner in the flight zone as given by the Server
 # in the indexes following the convention:
 #  0-----------1
 #  |           |
@@ -188,9 +193,9 @@ def clickCallback(event):
 #  2-----------3
 # parameters: if passed 1, return as string, otherwise return as a float
 def getCorners(stringReturn):
-	global client
-	# gets the missions from the client
-	missions = client.get_missions()
+	global Server
+	# gets the missions from the Server
+	missions = Server.get_missions()
 
 	# boundary points for the first mission, and first fly zone
 	boundary_pts = missions[0].fly_zones[0].boundary_pts
@@ -416,7 +421,7 @@ def main():
 	Ax = corners[0][1]
 	Ay = corners[2][0]
 
-	missions = client.get_missions()
+	missions = Server.get_missions()
 
 	# list of waypoints outlc
 	flyzone_waypoints = missions[0].fly_zones[0].boundary_pts
@@ -450,7 +455,6 @@ def main():
 		makeCircle((search_grid_waypoints[i].latitude, search_grid_waypoints[i].longitude),20, "green")
 
 	mission_waypoints = missions[0].mission_waypoints
-	print missions
 	for i in range(0, len(mission_waypoints)):
 		makeCircle((mission_waypoints[i].latitude, mission_waypoints[i].longitude),20, "blue")
 		#createLine((mission_waypoints[i].latitude, mission_waypoints[i].longitude), "blue")
