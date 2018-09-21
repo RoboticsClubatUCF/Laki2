@@ -26,3 +26,8 @@ class Server:
 
 		Server.mission_waypoints.append(newWaypoint)
 		return Server.mission_waypoints
+
+	def change_air_drop_pos(this, gpsWaypoint):
+		Server.air_drop_pos = interop.Waypoint(gpsWaypoint[0], gpsWaypoint[1], None)
+
+	

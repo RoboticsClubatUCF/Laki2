@@ -27,6 +27,8 @@ pixel_width = None
 
 canvas = None
 
+buttonCommand = "no_command"
+
 # gets the odometry data from ROS and saves it to the variable current_pos
 def getCurrentPosition(data):
 
@@ -55,15 +57,18 @@ def init_ros():
 # update the gui with new info
 def update():
 	#extract the information from ROS that we need (latitude and longitude)
-	global latitude
-	global longitude
+	# global latitude
+	# global longitude
 	
-	if latitude is not None:
-		gpsString = str(latitude) + ", " + str(longitude)
+	# if latitude is not None:
+	# 	gpsString = str(latitude) + ", " + str(longitude)
 	
-		label_gpsData.config(text=gpsString)
+	# 	label_gpsData.config(text=gpsString)
 		#label_imuData.config(text=current_pos)
-	
+
+	waypoints = Server.mission_waypoints
+	for i in range(0, len(waypoints)-1):
+		createLine((waypoints[i].latitude, waypoints[i].longitude),(waypoints[i+1].latitude, waypoints[i+1].longitude), "red")	
 	
 	root.after(100, update)
 
@@ -108,8 +113,8 @@ def createLine(gps1, gps2, color):
 	y1 = gpsToPixel(gps2[0], "lat")
 
 
-	print "\nmaking line from (gps) = " + str(gps1) + " to " + str(gps2) + ")"
-	print "making line from (pixel) = (" + str(x1) + ", " + str(y1) + ") to (" + str(x2) + ", " + str(y2) + ")"
+	# print "\nmaking line from (gps) = " + str(gps1) + " to " + str(gps2) + ")"
+	# print "making line from (pixel) = (" + str(x1) + ", " + str(y1) + ") to (" + str(x2) + ", " + str(y2) + ")"
 
 	line = canvas.create_line(x1,y2,x2,y1, fill=color)
 
@@ -174,15 +179,24 @@ def pixelToGps(pixel, xOrY):
 def clickCallback(event):
 	pix = (event.y, event.x)
 	print "clicked at", event.x, event.y
-	print "clicked gps = ", pixelToGps((event.x, event.y), "x"), pixelToGps((event.x,event.y), "y")
 	lon = pixelToGps(pix, "x")
 	lat = pixelToGps(pix, "y")
+	print "clicked gps = ", lat, lon
 
 	makeCircle((lat, lon), 15, "orange")
 
-	print "waypoints1 = " + str(Server.mission_waypoints)
-	Server.add_mission_waypoint((lat, lon), 0)
-	print "waypoints2 = " + str(Server.mission_waypoints)
+	print "\nbuttonCommand = " + buttonCommand
+
+	if(buttonCommand == "Mission_waypoints"):
+		waypoints = Server.mission_waypoints
+		Server.add_mission_waypoint((lat, lon), 0)
+		createLine((lat, lon), (waypoints[len(waypoints)-1].latitude, waypoints[len(waypoints)-1].longitude), "red")
+
+
+
+	# print "waypoints1 = " + str(Server.mission_waypoints)
+	# Server.add_mission_waypoint((lat, lon), 0)
+	# print "waypoints2 = " + str(Server.mission_waypoints)
 	
 
 # returns GPS coords for each corner in the flight zone as given by the Server
@@ -335,6 +349,11 @@ def makeCircle(centroid, radius, color):
 
 	canvas.create_oval(TL[0], TL[1], BR[0], BR[1], fill=color)
 
+def addWaypoint():
+	global buttonCommand
+	buttonCommand = "Mission_waypoints"
+	print Server.mission_waypoints
+
 def main():
 	global root
 	global label_gpsData
@@ -358,25 +377,6 @@ def main():
 	# default gps for simulator:
 	# latitude: 47.3977417
 	# longitude: 8.5455941
-
-	'''
-	while(latitude == None):
-		continue
-	imageLat1 = latitude - 0.0025
-	imageLat2 = latitude + 0.0025
-	imageLong1 = longitude - 0.01
-	imageLong2 = longitude + 0.01
-	
-	imgLowerRight = str(imageLat1) + ", " + str(imageLong1)
-	imgUpperLeft  = str(imageLat2) + ", " + str(imageLong2)
-	
-	print(imgUpperLeft)
-	print(imgLowerRight)
-
-	'''
-
-	#getGpsImage('28.587011, -81.200438', '28.582682, -81.195694')
-	#getGpsImage('47.3977413, -8.545594', '47.3927413, -8.535594')
 	
 	str_corners = getCorners(1)
 	
@@ -406,6 +406,10 @@ def main():
 	#label that updates based on given gps data
 	label_gpsData = Label(root, text="NO GPS DATA")
 	label_gpsData.grid(row=0, column=12, sticky = N)
+
+	# put the icon to the left of the text label
+	button = Button(text="Add Mission Waypoints", command=addWaypoint)
+	button.grid(row=9, column=11	, sticky=S)
 
 	''' label for imu data (temporarily removed until we know what data is useful'''
 	#label_imuName = Label(root, text="orientation = ")
@@ -458,6 +462,8 @@ def main():
 	for i in range(0, len(mission_waypoints)):
 		makeCircle((mission_waypoints[i].latitude, mission_waypoints[i].longitude),20, "blue")
 		#createLine((mission_waypoints[i].latitude, mission_waypoints[i].longitude), "blue")
+
+
 
 	update() # update the gui with new info	
 	
