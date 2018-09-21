@@ -1,0 +1,104 @@
+﻿eCalc  -  Multicopter Calculator                    all data without guarantee - Accuracy:  /-15%
+
+
+Project Name;;Lakitu;
+
+Battery;;custom;
+Configuration:;;6S8P;
+Load:;C;3.87;
+Voltage:;V;21.58;
+Rated Voltage:;V;22.20;
+Energy:;Wh;1074.48;
+Total Capacity:;mAh;48400;
+max. discharge:;;85%;
+Used Capacity:;mAh;41140;
+min. Flight Time:;min;13.2;
+Mixed Flight Time:;min;27.7;
+Hover Flight Time:;min;31.3;
+Weight:;g;5760;
+;oz;203.2;
+
+
+Controller;;CC Thunderbird 36;
+Current:;A cont.;36;
+;A max;36;
+Weight:;g;20;
+;oz;0.7;
+
+
+Accessories;;
+Current drain:;A;0;
+Weight:;g;0;
+;oz;0;
+
+
+Motor @ Maximum;;MultiStar 4114-320 (320);
+Gear Ratio:;: 1;1;
+Weight:;g;148;
+;oz;5.2;
+Current:;A;23.41;
+Voltage:;V;21.39;
+Revolutions*:;rpm;5821;
+electric Power:;W;500.9;
+mech. Power:;W;403.0;
+Efficiency:;%;80.5;
+est. Temperature:;°C;66;
+;°F;151;
+
+
+Motor @ Hover
+Propeller;;APC SlowFly SF (0°)  17" x 6";
+# Blades:;;2;
+avail.Thrust @ ;@;
+;@;
+Current:;A;9.84;
+Voltage:;V;21.86;
+Revolutions*:;rpm;3912;
+Throttle (log):;%;53;
+Throttle (linear):;%;65;
+Power-Weight:;W/kg;159.5;
+;W/lb;72.3;
+Efficiency:;%;80.0;
+specific Thrust:;g/W;6.37;
+;oz/W;0.22;
+est. Temperature:;°C;43;
+;°F;109;
+
+
+Total Drive;;
+Drive Weight:;g;7814;
+;oz;275.6;
+Power-Weight:;W/kg;365.6;
+;W/lb;165.8;
+Thrust-Weight:;: 1;1.7;
+Current @ Hover:;A;78.76;
+P(in) @ Hover:;W;1748.4;
+P(out) @ Hover:;W;1378.0;
+Efficiency @ Hover:;%;78.8;
+Current @ max:;A;187.30;
+P(in) @ max:;W;4158.1;
+P(out) @ max:;W;3224.4;
+Efficiency @ max:;%;77.5;
+
+
+Multicopter
+# of Rotors:;;8 - flat;
+All-up Weight:;g;10960;
+;oz;386.6;
+add. Payload:;g;5478;
+;oz;193.2;
+max Tilt:;°;48;
+max. Speed:;km/h;32;
+;mph;19.9;
+est. rate of climb:;m/s;4.6;
+;ft/min;906;
+Total Disc Area:;dm²;117.15;
+;in²;1815.83;
+with Rotor fail:;;resistent;
+
+
+Remarks:;;0;
+
+
+
+(c) by Solution for All   -   7.111, 20.6.18
