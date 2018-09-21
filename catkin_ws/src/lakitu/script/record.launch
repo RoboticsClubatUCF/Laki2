@@ -1,0 +1,9 @@
+<?xml version="1.0"?>
+
+<launch>
+
+	<include file="$(find pointgrey_camera_driver)/launch/camera.launch"/>
+
+	<node pkg="rosbag" type="record" name="rosbag_record_cam" output="screen" args="-a -o /media/odroid/7c29b65b-08cd-41ba-bab4-7759807b88d3/record.bag"/>
+
+</launch>
