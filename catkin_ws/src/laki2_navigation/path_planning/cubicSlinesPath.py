@@ -1,17 +1,11 @@
 from __future__ import division
-import copy
-import collections
-import inspect
-import sys
-import random
 import numpy as np
-import math
 import scipy
-from scipy.interpolate import CubicSpline
+from scipy.interpolate import CubicSpline, interp1d
+from scipy.optimize import minimize
 import matplotlib.pyplot as plt
 from matplotlib.pyplot import Circle
 from matplotlib.collections import PatchCollection
-
 
 #----------------------------------------------------------------------------------#
 
@@ -23,17 +17,12 @@ from matplotlib.collections import PatchCollection
 # circle is of the form [(h, k), r] where (h, k) is the center and r is the radius
 # returns a list of the values of t where the cubic intersects the circle
 
-# Note: does not return a value if the entire cubic spline is inside the circle
-#   (There is technically no intersection in that case)
-
 # Returns a list of collision tuples. 
-#   Each collision hsa the form (tVals, intersectionPts, ptOfInterests, circle)
-#   Where tVals are the beginning and end point of the segment of spline that 
-#       intersects the circle
-#   intersectionPts are the pts that intersect the circle
-#   ptOfInterests contains a list of ptOfInterest. Each ptOfInterest is the pt 
-#       between a par of intersection points that is closest the the center of the 
-#       circle
+#   Each collision has the form (intersectionPts, ptOfInterest, circle)
+#   Where intersectionPts are the two pts that intersect the circle. Only values
+#       between the intersection points are inside the circle
+#   ptOfInterest is the point between a par of intersection points that is closest 
+#       the the center of the circle
 
 def cubicSplineCircleCollisions(csx, csy, tVals, circle):
     # Equation of a circle:
@@ -44,22 +33,18 @@ def cubicSplineCircleCollisions(csx, csy, tVals, circle):
     # collisions is the list to return
     collisions = []
 
-    # Intermediate storage for intersection points with the circle
     intersections = []
 
     distToInitPt = np.linalg.norm([(csx(tVals[0]) - circle[0][0]), 
             (csy(tVals[0]) - circle[0][1])])
-    
-    isInitPtInsideCircle = (distToInitPt < circle[1])
 
-    extraCritPts = []
+    distToFinPt = np.linalg.norm([(csx(tVals[-1]) - circle[0][0]), 
+            (csy(tVals[-1]) - circle[0][1])])
+
+    resetCritPts = True
 
     # Loop through all segments of the given cubic spline
-    for i in xrange(len(csx.x) - 1):
-        print "\ni: ", i
-        print "intersections entering the loop: ", intersections
-        print "collsions: ", collisions
-
+    for i in xrange(len(tVals) - 1):
         # tX is a list of the coefficients of the equation x = At^3 + Bt^2 + Ct + D
         # tY is a list of the coefficients of the equation y = at^3 + bt^2 + ct + d 
         tX = [csx.c[0][i], csx.c[1][i], csx.c[2][i], csx.c[3][i]]
@@ -93,8 +78,6 @@ def cubicSplineCircleCollisions(csx, csy, tVals, circle):
 
         roots = np.roots(coeff)
 
-        # Find all intersection points between the circle and this segment
-
         # Weed out the garbage points
         for root in roots:
             # Doesn't count if it is an imaginary root
@@ -102,22 +85,27 @@ def cubicSplineCircleCollisions(csx, csy, tVals, circle):
                 continue
 
             # The root must be between the start and end of this segment
-            if (root > 0 and root < (tVals[i+1] - tVals[i])):
+            if (root >= 0 and root <= (tVals[i+1] - tVals[i])):
                 intersections.append(root.real + tVals[i])
 
-        print "intersections after appending within the loop: ", intersections
+        # The end pts count as intersection points if they are inside the circle
+        #   and we are analysing that particular segment
+        if ((i == 0) and (distToInitPt <= circle[1])):
+            # This avoids the edge case where the endpoint is on the circumference
+            if (tVals[0] not in intersections):
+                intersections.append(tVals[0])
 
-        if ((i == 0) and (distToInitPt < circle[1])):
-            intersections.append(tVals[0])
+        elif ((i == (len(tVals) - 2)) and (distToFinPt <= circle[1])): 
+            # This avoids the edge case where the endpoint is on the circumference
+            if (tVals[-1] not in intersections):
+                intersections.append(tVals[-1])
 
-        # If the circle intersects with this segment of the spline, we need to find
-        #   the ptOfInterest associated between each pair of intersections
+        # Sort the intersection points to make manipulations easier
+        intersections.sort()
+
+        # If there are intersection points associated with this segment, find the
+        #   the closest point and package it nicely into collisions
         if intersections:
-            intersections.sort()
-
-            print "intersections after sorting: ", intersections
-
-
             # The equation for dist from the center to the spline is of the form:
             #   p^2 = (tX)^2 + (tY)^2
             # Where p is the distance from the center to the spline
@@ -143,7 +131,11 @@ def cubicSplineCircleCollisions(csx, csy, tVals, circle):
             #   the distance to the center of the circle is at a local min or max
             roots = np.roots(coeff)
 
-            critPts = []
+            # Only set critPts to the empty list if the points inside are no longer 
+            #   needed
+            if resetCritPts:
+                critPts = []
+            
             # Weed out the garbage points
             for root in roots:
                 # Doesn't count if it is an imaginary root
@@ -154,114 +146,32 @@ def cubicSplineCircleCollisions(csx, csy, tVals, circle):
                 if (root > 0 and root < (tVals[i+1] - tVals[i])):
                     critPts.append(root.real + tVals[i])
 
-            # Sort the crit points to make things easier
+            critPts.append(tVals[i])
+            critPts.append(tVals[i+1])
+
+            # Sort the crit points to manipulations things easier
             critPts.sort()
 
-            # Distance from first endpoint to center of circle
-            distToCenter = np.linalg.norm([(csx(tVals[i]) - circle[0][0]), 
-                    (csy(tVals[i]) - circle[0][1])])
+            # Distance from the next knot to center of circle
+            distToCenter = np.linalg.norm([(csx(tVals[i+1]) - circle[0][0]), 
+                    (csy(tVals[i+1]) - circle[0][1])])
 
-            # If the distance from the first endpoint of this segment to the center 
-            #   of the circle is less than the radius of the circle, the endpoint is 
-            #   inside the circle
-            # This means that the ptOfInterest associated with this collision could
-            #   be on the previous spline, or at the knot
-            # Each intersection point has a sister point. (except at the very end or
-            #   very beginning of the spline) 
-
-            # It may occur that the sister point is on another segment of the spline
-            # Everything within done for within this if statement is because it is
-            #   the special case where the sister point may be on the prev spline 
+            # If the knot is inside the segment, don't reset the critical points
             if (distToCenter <= circle[1]):
-                print "step 1"
-                # If this is the first intersection point, the ptOfInterest cannot 
-                #   be on the previous segment, because there is no 'previous 
-                #   spline' that was ever outside the circle.
-                # Thus the closest point from the 'previous spline' is the first 
-                #   endpoint
-                if (i == 0):
-                    closestPt = tVals[0]
+                resetCritPts = False
 
-                # Initialize dist to be the distance of closest point from the 
-                #   previous spline
-                dist = np.linalg.norm([csx(closestPt) - circle[0][0], 
-                        csy(closestPt) - circle[0][1]])
+                # Unless this is the last segment, continue to the next segment
+                if (i != len(tVals) - 2):
+                    continue
 
-                print "dist: ", dist
-                print "closestPt: ", closestPt
-
-                # Check all revelvant critical points to find the closest one
-                for critPt in critPts:
-                    """
-                    # If the crit pt is beyond the first intersection point, it will
-                    #   not be the pt associated with this collision 
-                    if (critPt > intersections[0]):
-                        break
-                    """
-
-                    # Calculate the distance to this critical point
-                    newDist = np.linalg.norm([csx(critPt) - circle[0][0], 
-                            csy(critPt) - circle[0][1]]) 
-
-                    print "newDist: ", newDist
-
-                    # Compare the distance from this criticl point to the previous
-                    # Keep the closer one
-                    if (newDist < dist):
-                        dist = newDist
-                        closestPt = critPt
-
-                    print "closestPt: ", closestPt
-
-                # Time to add the new collision to the collisions list:
-
-                # If this is the first segment, the tVals are for the first segement
-                # The intersection points will be the endpoint (not a true 
-                #   intersection point) and the actual intersection point 
-                # The closestPt is the one found from the critical points
-                if (i == 0 and (distToInitPt < circle[1] 
-                                            and (len(intersections) == 2))):
-                    collisions.append((
-                            (tVals[0], tVals[1]), 
-                            (tVals[0], intersections[1]), 
-                            closestPt,
-                            circle))
-
-                    # Remove the first intersection point, the collision it is 
-                    #   associated with has been taken care of
-                    del intersections[0]
-                    del intersections[0]
-
-
-                # If this is not the first point, the tVals are such that they
-                #   encompass the previous segment and the current segment
-                # The intersection points are the lower and upper true intersection
-                #   points
-                # The closestPt is the one found from the critical points
-                else:
-                    if (len(intersections) > 1):                    
-                        collision = collisions[-1]
-
-                        collisions[-1] = (
-                                (collision[0][0], tVals[i+1]), 
-                                (collision[1][0], intersections[1]),
-                                closestPt,
-                                circle)
-
-                        del intersections[0]
-                        del intersections[0]
-
-            # While there are still pairs of intersection points in the queue, 
-            #   continue to create collisions
+            # whle there are still intersection points in the queue, process them
             while (len(intersections) > 1):
-                print "step 2"
-                # Initialize dist to infinity and closestPt to -1
-                # This serves as a flag if there is an issue
                 dist = np.inf
                 closestPt = -1
 
-                print "critPts: ", critPts
-                
+                # Note: only possible this easisly because critPts and intersections 
+                #   are both respectively sorted
+
                 # Find the closest critical point between the current pair of
                 #   intersection points
                 for crit in critPts:
@@ -276,7 +186,7 @@ def cubicSplineCircleCollisions(csx, csy, tVals, circle):
                     if  (crit > intersections[1]):
                         break
 
-                    # Otherwise, finf the distance from this crit point to the 
+                    # Otherwise, find the distance from this crit point to the 
                     #   center of the circle
                     newDist = np.linalg.norm([csx(crit) - circle[0][0], 
                             csy(crit) - circle[0][1]]) 
@@ -284,93 +194,249 @@ def cubicSplineCircleCollisions(csx, csy, tVals, circle):
                     # Compare it to the previous best and update if necessary
                     if (newDist < dist):
                         dist = newDist
-                        closestPt = crit
+                        closestPt = crit                
 
+                # Add this collision to the collisions return list
                 collisions.append((
-                        (tVals[i], tVals[i+1]), 
                         (intersections[0], intersections[1]),
                         closestPt,
                         circle))
 
-                # Delete the leading pair of intersection points                
+                # Delete the leading pair of intersection points              
                 del intersections[0]
                 del intersections[0]
-                
-            # The previous loop ends when there are 1 or 0 intersection points 
-            #   remaining in the queue. If there is 1, the sister point is on the 
-            #   next spline segment
-            if (len(intersections) == 1):
-                print "step 3"
 
-                if (i == len(tVals) - 2):
-                    # Initialize dist to be the distance of the final endpoint
-                    dist = np.linalg.norm([csx(tVals[-1]) - circle[0][0], 
-                            csy(tVals[-1]) - circle[0][1]])
-
-                    # Initialize the closestPt to be the endpoint
-                    closestPt = tVals[-1]
-
-                """
-                else:
-                    dist = np.linalg.norm([csx(tVals[-1]) - circle[0][0], 
-                            csy(tVals[-1]) - circle[0][1]])
-
-                    # Initialize the closestPt to be the endpoint
-                    closestPt = tVals[-1]
-                """
-
-                print "dist: ", dist
-
-                # Check all revelvant critical points to find the closest one
-                for critPt in critPts:
-                    # If the crit pt is before the remaining intersection point, 
-                    #   it will not be the pt associated with this collision 
-                    if (critPt < intersections[0]):
-                        continue
-
-                    # Calculate the distance to this critical point
-                    newDist = np.linalg.norm([csx(critPt) - circle[0][0], 
-                            csy(critPt) - circle[0][1]]) 
-
-                    print "newDist: ", newDist
-
-                    # Compare the distance from this criticl point to the previous
-                    # Keep the closer one
-                    if (newDist < dist):
-                        dist = newDist
-                        closestPt = critPt
-
-                    print "closestPt: ", closestPt
-
-                # If this is the last segment: 
-                #   Set the the bounds on tVal to be the the start and end of the 
-                #       last segment
-                #   Set the intersection points to be the actual intersection point 
-                #       and the endpoint (not a true intersection point)
-                #   Set the closestPt to be the closest critical point
-                if (i == (len(tVals) - 2)):
-                    collision = collisions[-1]
-
-                    collisions[-1] =(
-                            (collision[0][0], tVals[-1]),
-                            (intersections[0], tVals[-1]),
-                            closestPt,
-                            circle)
-
-                # Otherwise put the key information so the next iteration can grab
-                #   what is necessary
-                else:
-                    if (len(collisions) > 0):
-                        if (collisions[-1][1][0] == intersections[0]):
-                            continue
-
-                    collisions.append((
-                            (tVals[i], None),
-                            (intersections[0], None),
-                            closestPt,
-                            circle))
+                # Since the statement before this while loop was not triggered, it
+                #   is known that this is not an intermediate knot inside the circle
+                # Because of that, there will be an even number of intersection
+                #   points between the very start of the spline and the end of the
+                #   current segement. Therefore, the intersections queue will be
+                #   completely processsed and the critPts can be reset
+                resetCritPts = True
 
     return collisions
+
+#----------------------------------------------------------------------------------#
+
+# Helper function for main. Returns a list of circle tuples
+# Each circle tuple is of the form ((h, k), r) where (h, k) is the center and r is
+#   the radius
+def makeRandomCircles(numCircles, wpx, wpy):
+    import random
+
+    # Put given waypoints into a list of (x, y) points
+    pts = []
+    for i in xrange(len(wpx)):
+        pt = (wpx[i], wpy[i])
+        pts.append(pt)
+
+    # Generate Random Obstacles
+    count = 0
+    circles = []
+
+    # Create n random, non-overlapping circles
+    while (count <= numCircles):
+        # Random center and radius
+        h = random.uniform(0.0, 1300.0)
+        k = random.uniform(0.0, 800.0)
+        r = random.uniform(30*12*0.0254, 300*12*0.0254)
+
+        # Don't keep the circle if is swallows a waypoint or is inside another 
+        #   circle
+        key = False
+        for pt in pts:
+            if (np.linalg.norm((pt[0] - h, pt[1] - k)) < (r * 1.1)):
+                key = True
+                break
+
+            else:
+                for circle in circles:
+                    distBtwnCircles = np.linalg.norm([circle[0][0] - h, 
+                                                    circle[0][1] - k])
+                    
+                    if (distBtwnCircles < (circle[1] + r)* 1.1):
+                        key = True
+                        break
+
+        if key:
+            continue
+
+        # Add circle to plot and list of circles
+        circles.append(((h, k), r))
+        count += 1
+
+    return circles
+
+#----------------------------------------------------------------------------------#
+
+# Given 3 lists, a list for each of the x, and y coordinates of waypoints, as well
+#   as an init spacing for the parameter. Initial spacing must be stricly increasing
+# Lists need to be of the same length
+# Pass a costFunction that evaluates the cost of the spline
+
+# If successful, returns (t_opt, True) where t_opt is the optimal spacing
+# If unsuccessful, returns (t, False) where t is the original spacing
+def optimizeParameterSpacing(wpx, wpy, t, costFunc):
+    def evalSpacing(x):
+        # The first two parameters are fixed
+        # Any scalar multiple of the spacing results in the same spline
+        spacing = [t[0], t[1]]
+
+        # Add the other (n-2) terms to t
+        for param in x:
+            # x contains the difference between the current and previous index
+            # Exponential is used to ensure the value is strictly positive
+            # This ensures that t is strictly increasing
+            spacing.append(spacing[-1] + np.exp(param))
+
+        csx = CubicSpline(spacing, wpx)
+        csy = CubicSpline(spacing, wpy)
+
+        # Return some cost of the spline
+        return costFunc(csx, csy)
+    #--------------------------------#
+
+    x0 = []
+    for i in xrange(len(t)):
+        if (i == 0 or i == 1):
+            continue
+
+        # Difference between the current     
+        diff = t[i] - t[i-1]
+        x0.append(np.log(diff))
+
+    # x is now an array representing the natural log of the difference between 
+    #   non-fixed values of t
+    x0 = np.array(x0)
+
+    # To aquire the respective spacing, simply exponentiate an element of x and add 
+    #   it to the previous element in the spacing
+    # This allows for the elements of x to take on any real value while ensuring
+    #   that the respective spacing is strictly increasing
+    # TO DO: probably give some kind of jacobian to make this faster
+    opt_obj = minimize(evalSpacing, x0, method = 'Nelder-Mead', tol = 1e-8)
+
+    # Determine if the optimization was successful (it should be in all cases)
+    if (opt_obj.success):
+        x_opt = opt_obj.x
+
+        # The first two parameters are fixed
+        # Any scalar multiple of the spacing results in the same spline
+        t_opt = [0, t[1]]
+
+        # Add the other (n-2) terms to t
+        for param in x_opt:
+            # x contains the difference between the current and previous index
+            # This ensures that t is monotomically increasing
+            t_opt.append(t_opt[-1] + np.exp(param))
+
+        return (t_opt, True)
+
+    # If unsucessful, deal with it. Life isn't fair
+    else:
+        return (t, False)
+
+#----------------------------------------------------------------------------------#
+
+# csx is the cubic spline of x as a function of t
+# csy is the cubic spline of y as a function of t
+
+# tVals is the list of parametric points serving as the knots for the cubic spline
+
+# poly is of the form [pt-1, pt-2, ... pt-n] where each pt represents a vertice of
+#   the competition boundary
+
+# Returns a list of collision tuples. 
+#   Each collision has the form (intersectionPts, ptOfInterest, circle)
+#   Where intersectionPts are the two pts that intersect the circle. Only values
+#       between the intersection points are inside the circle
+#   ptOfInterest is the point between a par of intersection points that is closest 
+#       the the center of the circle
+
+def cubicSplinePolygonCollisions(csx, csy, tVals, poly):
+    # Equation of a line:
+    #   y = m*x + k
+    # x is defined in terms of t by csx
+    # y is defined in terms of t by csy
+
+    # collisions is the list to return
+    collisions = []
+
+    intersections = []
+
+    distToInitPt = np.linalg.norm([(csx(tVals[0]) - poly[0][0]), 
+            (csy(tVals[0]) - poly[0][1])])
+
+    distToFinPt = np.linalg.norm([(csx(tVals[-1]) - poly[0][0]), 
+            (csy(tVals[-1]) - poly[0][1])])
+
+    resetCritPts = True
+
+    # Loop through all segments of the given cubic spline
+    for i in xrange(len(tVals) - 1):
+        # tX is a list of the coefficients of the equation x = At^3 + Bt^2 + Ct + D
+        # tY is a list of the coefficients of the equation y = at^3 + bt^2 + ct + d 
+        tX = [csx.c[0][i], csx.c[1][i], csx.c[2][i], csx.c[3][i]]
+        tY = [csy.c[0][i], csy.c[1][i], csy.c[2][i], csy.c[3][i]]
+
+        # Loop through all lines of the polygon
+        for j in xrange(len(poly)):
+            x = (poly[j-1][0], poly[j][0])
+            y = (poly[j-1][1], poly[j][1])
+
+            # Equation of a line
+            # y = m*x + k
+
+            # Calculate intersection points between line and cubic function
+            #   y = m*x + k
+            #   x = At^3 + Bt^2 + Ct + D
+            #   y = at^3 + bt^2 + ct + d
+            #   Therefore:
+            #       0 = (a - m*A)t^3 + (b - m*B)t^2 + (c - m*C)t + (d - mD - k)
+
+            if ((x[0] - x[1]) == 0):
+                # Equation of a line is x = h bc slope is infinite
+                # Intersection point is slightly easier
+                # 0 = At^3 + Bt^2 + Ct + (D - h)
+                coef = copy.copy(tX)
+                coef[3] -= x[0]
+
+            else:
+                # Calculate the slope of the line
+                m = (y[0] - y[1]) / (x[0] - x[1])
+                
+                # Calculate the y intercept of both line segments
+                k = y[0] - (m * x[0])
+
+                coef = [(tY[0] - m*tX[0]),
+                        (tY[1] - m*tx[1]), 
+                        (tY[2] - m*tx[2]),
+                        (tY[3] - m*tx[3] - k)]
+
+
+            # np.roots() to solve for 0's of coeff
+            # Only keep intersection points that are within the bounds of the spline
+            # Only keep intersection points that are within the bounds the line 
+            #   segment polygon
+
+            # Calculate pts of interest if intersection points exist
+            #   Rotate abt origin
+            #   Find critical points wrt t' (rotated parametric function independent 
+            #       variable)
+            #   Rotate (t', y') back into (x, y) plane
+            #   Find value of t that aligns with pt of interest
+
+
+#----------------------------------------------------------------------------------#
+
+# csx and csy are the parametric cubic splines with knots at the points in t
+# collisions is a list of collision objects
+# Collision object is of the form (intersectionPts, ptOfInterest, circle)
+#   or (intersectionPts, ptOfInterest, line)
+
+def fixIntersections(csx, csy, t, collisions):
+    # TO DO
+    return 0
 
 #----------------------------------------------------------------------------------#
 
@@ -381,50 +447,25 @@ def main():
     plt.gca().set_ylim([0, 800])
 
     # Initialize 'given' waypoints
-    wpxInit = [250, 100, 1000, 1050, 800, 750]
-    wpyInit = [600, 375, 390, 650, 650, 200]
+    wpxInit = [600, 250, 100, 1000, 1050, 800, 750]
+    wpyInit = [500, 600, 375, 390, 650, 650, 200]
     plt.plot(wpxInit, wpyInit, 'x', label ='data', color = (0,0,0,1))
 
-    # Put given waypoints into a list of (x, y) points
-    pts = []
-    for i in xrange(len(wpxInit)):
-        pt = (wpxInit[i], wpyInit[i])
-        pts.append(pt)
+    # Makes parameter spacing to be constant
+    n = len(wpxInit)
+    t = np.arange(n)
 
-    # Generate Random Obstacles
-    count = 0
-    circles = []
+    csx = CubicSpline(t, wpxInit, bc_type = ((1, slopeY), 'not-a-knot'))
+    csy = CubicSpline(t, wpyInit, bc_type = ((1, slopeX), 'not-a-knot'))
 
-    circle = Circle((290, 600), 300, facecolor='r')
-    circles.append(((290, 600), 300))
-    ax.add_patch(circle)
-    count += 1
+    # Plot parametric cubic splines
+    s = 0.01
+    tSpace = np.arange(t[0], t[n-1] + s, s)
+    plt.plot(csx(tSpace), csy(tSpace))
+
+    poly = [(250, 500), (700, 400), (800, 600), (400, 200)]
 
     """
-    while (count < 10):
-        # Random center and radius
-        h = random.randint(0, 1300)
-        k = random.randint(0, 800)
-        r = random.randint(int(30*12*0.0254), int(300*12*0.0254))
-
-        # Don't keep the circle if is swallows a waypoint
-        key = False
-        for pt in pts:
-            if (np.linalg.norm((pt[0] - h, pt[1] - k)) < (r * 1.1)):
-                key = True
-                break
-
-        if key:
-            continue
-
-        # Add circle to plot and list of circles
-        circle = Circle((h,k), r, facecolor='r')
-        circles.append(((h, k), r))
-        ax.add_patch(circle)
-        count += 1
-    """
-
-
     # Starting Point will have some slope dependent on vehicle heading
     slope = (wpyInit[0] - wpyInit[1]) / (wpxInit[0] - wpxInit[1])
     slopeY = slope
@@ -440,16 +481,18 @@ def main():
     slopeX *= c
 
     # Create parametric cubic spline
-    """
+    n = len(wpxInit)
+
+    # Makes parameter spacing to be the euclidean distance between the waypoints
     t = [0]
-    for i in xrange(len(wpx)):
+    for i in xrange(len(wpxInit)):
         if (i == 0):
             continue
 
-        t.append(t[-1] + np.linalg.norm([wpx_init[i] - wpx_init[i-1], 
-                wpy_init[i] - wpy_init[i-1]]))
-    """
-    n = len(wpxInit)
+        t.append(t[-1] + np.linalg.norm([wpxInit[i] - wpxInit[i-1], 
+                wpyInit[i] - wpyInit[i-1]]))
+
+    # Makes parameter spacing to be constant
     t = np.arange(n)
 
     n = len(t)
@@ -460,93 +503,109 @@ def main():
     s = 0.01
     tSpace = np.arange(t[0], t[n-1] + s, s)
     plt.plot(csx(tSpace), csy(tSpace))
-    #plt.show()
 
+    circles = makeRandomCircles(30, wpxInit, wpyInit)
 
-# Previous to this is creating no fly zones and the initial cubic spline
-#----------------------------------------------------------------------------------#
-# After this is attempting to create all the collision tuples
+    for circle in circles:
+        circle = Circle(circle[0], circle[1], facecolor='r')
+        ax.add_patch(circle)
 
     # List of collision tuples
     collisions = []
 
-    # To Do: turn this into a function outright
     # Find the intersection points and pts of interest for each circle
     for circle in circles:
         collisions += cubicSplineCircleCollisions(csx, csy, t, circle) 
 
     print "\n", collisions
 
-    allIntersectionPts = []
-    allPtsOfInterest = []
+    # Plot the intersection points and points of interest
+    intersectionPts = []
+    ptsOfInterest = []
     
     for collision in collisions:
-        tVals, intersectionPts, ptOfInterest, cicle = collision
+        intersections, ptOfInterest, cicle = collision
         
-        allIntersectionPts.append(intersectionPts[0])
-        allIntersectionPts.append(intersectionPts[1])
+        intersectionPts.append(intersections[0])
+        intersectionPts.append(intersections[1])
         
-        allPtsOfInterest.append(ptOfInterest)
+        ptsOfInterest.append(ptOfInterest)
 
-    plt.plot(csx(allIntersectionPts), csy(allIntersectionPts), 'o', color = 'g')
-    plt.plot(csx(allPtsOfInterest), csy(allPtsOfInterest), 'o', color = 'y')
+    plt.plot(csx(intersectionPts), csy(intersectionPts), 'o', color = 'g')
+    plt.plot(csx(ptsOfInterest), csy(ptsOfInterest), 'o', color = 'y')
+
+    #t = optimizeParameterSpacing(wpxInit, wpyInit, t)
+
+    collisions.sort(key=lambda x: x[1])
+
+    for collision in collisions:
+        x, y = csx(collision[1]), csy(collision[1])
+    """
+
+
 
     plt.show()
 
-    # Make a line crossing through pt of interest and circle center
-    # Numerically solve for when it no longer intersects
-    # Do this for all intersection points, until no intersection points exist
-    """
-    This is garbage, did it better and this is vestigial code from before
-    while(len(collisions)):
-        circle, ptsOfInterest = collisions[0]
+    # Create a line through a pt of interest and the circle it is inside of
+    # Create a new waypoint along the line
+    # Create a parameter q that determines the pos of the new waypoint on the line
+    # When q is 0, the new waypoint is at the center of the circle
+    # When q is + the waypoint moves away from the circle in one direction and when
+    #   q is - the waypoint moves away from the circle in the other direction
 
-        if (len(ptsOfInterest) > 1):
-            ptOfInterst = ptsOfInterst(len(ptsOfInterest) % 2)
-        else:
-            ptOfInterest = ptsOfInterest
-    """
-        # Find the segment of the whole spline that contains the pt of interest
-        # Create a line thru the center of the circle and the point
-        # Put an extra waypoint to nudge the new waypoint outside the circle
-        # The new waypoint should follow along the line
-        # Numerically solve for a value just outside the circle
-        # Re-run doesCubicIntersectCircle and minDistFromCubicToPt for all circles
-        # Repeat loop
+    # Optomizer part is done, evaluation is TBD
+    # Spacing for the splines is relative
+    # [0, 1, 2, 3, 4] yields the same spline as [0, 2, 4, 6, 8]
+    # Spacing for the splines is of the form [0, 1, a1, a2, a3, ...]
+    # Where a1 is 1 + b1, a2 is a1 + b2, ...
+    # (In this case 1 can be replaced with any arbitrary value
+
+    # Variables to optimize: 
+    #   all q's associated with intersection points
+    #   b1, b2, b3, ...
+    
+    # Evaluation Function:
+    #   Some function that takes the spline are returns the energy used to complete 
+    #       the competition. Should calculate speed at each point based on curvature 
+    #       and numerically solve by taking steps of step size speed * time_step
+    
+    # Additional concerns:
+    #   New collisions will need to be dealt with accordingly
+    #       Some collisions will be the result of the new, artificial waypoints 
+    #       Some will be genuinely new problems
+    #       Can determine which is which by seeing how close the 'new' collision is
+    #           to the old collision
 
 
-    """
-    # Plot intersection points and points of interest
-    """
 
 
 
-
-
-    """ 
-    Testing Generation
-    Done    1) Map is 1.3 km x 0.8 km
-    Done    2) Randomly generate max 30 obstacles of radii from 
-    """
-
-    """
-    Path Generation
-    Done    1) Spline from position to goal
-    Done    2) Find points that intersect with circles
-    Half    3) Fix that
-            4) Find regions that have high curvature
-            5) Fix that
-    """
-
-    """
-    Display Map Steps:
-            1) Rectangle for outer boundary
-    Done    2) Generate Random Circles
-    Done    3) Display circles
-    Done    4) Display Waypoints
-            5) Display knot points
-    Done    6) Display splines
-    """
 
 if __name__ == "__main__":
     main()
+
+
+""" 
+Testing Generation
+Done    1) Map is 1.3 km x 0.8 km
+Done    2) Randomly generate max 30 obstacles of radii from 
+"""
+
+"""
+Path Generation
+Done    1) Spline from position to goal
+Done    2) Find points that intersect with circles
+Half    3) Fix that
+        4) Find regions that have high curvature
+        5) Fix that
+"""
+
+"""
+Display Map Steps:
+        1) Rectangle for outer boundary
+Done    2) Generate Random Circles
+Done    3) Display circles
+Done    4) Display Waypoints
+        5) Display knot points
+Done    6) Display splines
+"""
