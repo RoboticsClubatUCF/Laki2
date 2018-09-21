@@ -136,7 +136,25 @@ class Takeoff(smach.State):
 			# 	if (current_pos.pose.pose.position.z <= (self.targetAlt + .1) and  current_pos.pose.pose.position.z >= (self.targetAlt - .1)):
 			# 		return 'toFLIGHT'	
 
-			rate.sleep()		
+			rate.sleep()	
+
+#PART OF FLIGHT_SM
+class Standby(smach.State):
+	
+	def __init__(self):
+		smach.State.__init__(self, outcomes=['toLOCAL','exit'])
+
+	def execute(self, userdata):
+	
+		if ((current_state.mode != 'AUTO.LOITER')):	
+			try:	#service call to set mode to takeoff
+				setModeSrv = rospy.ServiceProxy("/mavros/set_mode", SetMode) #http://wiki.ros.org/mavros/CustomModes
+				setModeResponse = setModeSrv(0, 'AUTO.LOITER')
+				# rospy.loginfo(str(setModeResponse) + '\nMODE: %s' % current_state.mode)
+
+			except rospy.ServiceException, e:
+				rospy.loginfo('Service call failed: %s' %e)	
+
 
 #PART OF FLIGHT_SM
 class ToLocal(smach.State):
@@ -145,7 +163,7 @@ class ToLocal(smach.State):
 	'''A flight mode that allows navigation to local setpoints'''
 
 	def __init__(self):
-		smach.State.__init__(self, outcomes=['exit'])
+		smach.State.__init__(self, outcomes=['toSTANDBY','exit'])
 		self.target_pub = rospy.Publisher('/mavros/setpoint_position/local', PoseStamped, queue_size=100)
 		# self.target_pub = None
 		
@@ -172,6 +190,8 @@ class ToLocal(smach.State):
 				except rospy.ServiceException, e:
 					rospy.loginfo('Service call failed: %s' %e)
 
+						
+
 			rate.sleep()
 
 
@@ -197,7 +217,8 @@ def main():
 
 		with flight_sm:
 
-			smach.StateMachine.add('TO_LOCAL', ToLocal(), transitions={'exit':'exit_flight_sm'})
+			smach.StateMachine.add('TO_LOCAL', ToLocal(), transitions={'toSTANDBY':'STANDBY','exit':'exit_flight_sm'})
+			smach.StateMachine.add('STANDBY', Standby(), transitions={'toTo_LOCAL':'TO_LOCAL','exit':'exit_flight_sm'}
 
 		smach.StateMachine.add('FLIGHT_SM', flight_sm, transitions={'exit_flight_sm':'exit_sm'})	
 
