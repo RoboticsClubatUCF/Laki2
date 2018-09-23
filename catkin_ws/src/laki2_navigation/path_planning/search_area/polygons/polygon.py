@@ -48,7 +48,7 @@ class polygon:
 
     # returns the euclidean distance between two points
     def dist(self, pt1, pt2):
-        return math.sqrt((pt1[0] - pt2[0])**2 + (pt1[1] - pt2[1])**2)
+        return np.sqrt((pt1[0] - pt2[0])**2 + (pt1[1] - pt2[1])**2)
 
 
     # Returns True if given point is on line and False if given point is not on line

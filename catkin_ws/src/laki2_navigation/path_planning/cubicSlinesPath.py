@@ -1,4 +1,5 @@
 from __future__ import division
+import sys
 import numpy as np
 import scipy
 from scipy.interpolate import CubicSpline, interp1d
@@ -354,8 +355,293 @@ def optimizeParameterSpacing(wpx, wpy, t, costFunc):
 #       the the center of the circle
 
 def cubicSplinePolygonCollisions(csx, csy, tVals, poly):
+    # Returns true if point is inside or on the boundary of the given polygon, 
+    #   else false
+    def isInsidePoly(poly, pt):
+        # Define a machine precision value for floating point comparisons
+        epsilon = sys.float_info.epsilon
+
+        # Returns the euclidean distance between two points
+        def dist(pt1, pt2):
+            return np.sqrt((pt1[0] - pt2[0])**2 + (pt1[1] - pt2[1])**2)
+
+        # Returns True if given point is on line and False if given point is not on line
+        # Enpoints are considered to be on the line
+        def isPtOnLine(segment, pt):
+            # Returns True if the point is between the bounds of the segment and False
+            #   otherwise
+            def isInBounds(pt):
+                # Because it is floating point numbers, we have to check if the number
+                #   is inside very close to being inside the interval.
+                #   numpy.isclose() does this check
+
+                # If the intersection is within the x interval of the segment
+                if (pt[0] >= xInterval[0]) and (pt[0] <= xInterval[1]):
+                    pass
+                
+                elif (np.isclose(pt[0], xInterval[0], 0, epsilon)
+                        or np.isclose(pt[0], xInterval[1])):
+                    pass
+                
+                else:
+                    return False
+
+                # If the intersection is within the y interval of the segment
+                if (pt[1] >= yInterval[0]) and (pt[1] <= yInterval[1]):
+                    pass
+
+                elif (np.isclose(pt[1], yInterval[0], 0, epsilon)
+                        or np.isclose(pt[1], yInterval[1])):
+                    pass
+
+                else:
+                    return False
+
+                return True
+
+
+            # segment is given in the form (x1, y1), (x2, y2)
+            x1, y1 = segment[0]
+            x2, y2 = segment[1]
+
+            x3, y3 = pt
+
+            # Find the x and y intervals of the line segments
+            xInterval = [min(x1, x2), max(x1, x2)]
+            yInterval = [min(y1, y2), max(y1, y2)]
+
+            # Calculate the slopes of the line
+            if (x1 - x2) == 0:
+                slope = np.inf
+            else:
+                slope = (y1 - y2) / (x1 - x2)
+
+            # special case when slope of line is infinite
+            if slope == np.inf:
+                # if the slope is infinite, but the x values aren't the same, it is not 
+                #   on the line
+                if not (np.isclose(x1, x3, 0, epsilon)):
+                    return False
+                
+                # if the point is above or below the line segment, it is not on the line
+                if (y3 < min(y1, y2)) or (y3 > max(y1, y2)):
+                    return False
+
+                # if they have the same x value, and the y value of the point is 
+                #   sandwiched between the y values of the line segment, the point is on
+                #   the line
+                return True
+
+            # When the slope isn't infinite, find the y intercept
+            b = y1 - (slope * x1)
+
+            # With the given line segment in y = mx + b form, plug in the x of the point
+            #  If the resulting y is the same as the y of the pt, the pt is on the line
+            if (np.isclose((y3 - b), (slope * x3), 0, epsilon)):
+                # Check that the point is within the bounds of the segment
+                if isInBounds(pt):
+                    return True
+                else:
+                    return False
+
+            else:
+                return False
+
+        # Returns the intersection point of the two given line segments
+        # Returns None if there is no intersection point on the segments
+        def intersection(segment1, segment2):
+            # Returns True if the point is between the bounds of both segments and False
+            #   otherwise
+            def isInBounds(pt):
+                # Because it is floating point numbers, we have to check if the number
+                #   is inside very close to being inside the interval
+                # numpy.isclose() does this check
+
+                # If the intersection is within the x interval of the first segment
+                if (pt[0] >= xInterval1[0]) and (pt[0] <= xInterval1[1]):
+                    pass
+                
+                elif (np.isclose(pt[0], xInterval1[0], 0, epsilon)
+                        or np.isclose(pt[0], xInterval1[1])):
+                    pass
+                
+                else:    
+                    #print "intersection outside of x bounds of first segment"
+                    return False
+
+                # If the intersection is within the x interval of the second segment
+                if (pt[0] >= xInterval2[0]) and (pt[0] <= xInterval2[1]):
+                    pass
+
+                elif (np.isclose(pt[0], xInterval2[0], 0, epsilon)
+                        or np.isclose(pt[0], xInterval2[1])):
+                    pass
+
+                else:
+                    return False
+
+                # If the intersection is within the y interval of the first segment
+                if (pt[1] >= yInterval1[0]) and (pt[1] <= yInterval1[1]):
+                    pass
+
+                elif (np.isclose(pt[1], yInterval1[0])
+                        or np.isclose(pt[1], yInterval1[1])):
+                    pass
+
+                else:
+                    return False
+
+                # If the intersection is within the y interval of the second segment
+                if (pt[1] >= yInterval2[0]) and (pt[1] <= yInterval2[1]):
+                    pass
+
+                elif (numpy.isclose(pt[1], yInterval2[0])
+                        or numpy.isclose(pt[1], yInterval2[1])):
+                    pass
+
+                else:
+                    return False
+
+                return True
+
+            # Assumes lines intersect at most one time (not infinitely many points)
+
+            # segment1 & segment2 are given in the form (x1, y1), (x2, y2) and (x3, y3), 
+            #   (x4, y4) respectively
+            x1, y1 = segment1[0]
+            x2, y2 = segment1[1]
+            
+            x3, y3 = segment2[0]
+            x4, y4 = segment2[1]
+
+            # Find the x intervals of the line segments
+            xInterval1 = [min(x1, x2), max(x1, x2)]
+            xInterval2 = [min(x3, x4), max(x3, x4)]
+
+            yInterval1 = [min(y1, y2), max(y1, y2)]
+            yInterval2 = [min(y3, y4), max(y3, y4)]
+
+            # There is no intersection point if the x and y intervals of the lines 
+            #   don't overlap
+            if (xInterval1[1] <= xInterval2[0]) and (xInterval2[1] <= xInterval1[0]):
+                return None
+            
+            if (max(y1,y2) <= min(y3,y4)) and (max(y3,y4) <= min(y1,y2)):
+                return None
+
+            # Calculate the slopes of the lines
+            if (x1 - x2) == 0:
+                slope1 = np.inf
+            else:
+                slope1 = (y1 - y2) / (x1 - x2)
+            
+            if (x3 - x4) == 0:
+                slope2 = np.inf
+            else:
+                slope2 = (y3 - y4) / (x3 - x4)
+
+            # Calculate the (possibly theoretical) y intercept of both line segments
+            b1 = y1 - (slope1 * x1)
+            b2 = y3 - (slope2 * x3)
+
+            # There is no intersection if the lines are parallel
+            if (slope1 == slope2):
+                return None
+
+            # Since the slope of the first line is infinite, and the lines interset at 
+            #   most once, we know the slope of the other line isn't infinite.
+            # By reaching this point of the method, we also know that both the x and y
+            #   intervals of the line segments overlap
+            # We also knnow that (x1 == x2) in order for the slope to be infinite
+            # The following is logically concluded:
+            if (slope1 == np.inf):
+                xIntersection = x1
+                yIntersection = b2 + slope2 * x1
+                
+                if (isInBounds((xIntersection, yIntersection))):
+                    return (xIntersection, yIntersection)
+
+                return None
+
+            # The similarly for if slope2 is infinite
+            if (slope2 == np.inf):
+                xIntersection = x3
+                yIntersection = b1 + slope1 * x3
+                
+                if (isInBounds((xIntersection, yIntersection))):
+                    return (xIntersection, yIntersection)
+
+                return None
+
+            # In order to intersect the following must be true:
+            #   yIntersection = slope1 * xIntersection + b1
+            #   yIntersection = slope2 * xIntersection + b2
+            # Therefore:
+            #   slope1 * xIntersection + b1 = slope2 * xIntersection + b2
+            xIntersection = (b2 - b1) / (slope1 - slope2)
+            yIntersection = b1 + slope1 * xIntersection
+            # The xIntersection must be between both the given x intervals
+            
+            if (isInBounds((xIntersection, yIntersection))):
+                    return (xIntersection, yIntersection)
+
+            return None
+
+        # Create a ray that extends "infinitely" in one direction
+        #   this ray cannot intersect the vertices of the polygon
+        # If this ray intercepts the polygon an odd number of times, it is inside 
+        #   the polygon. Otherwise it is outside the polygon
+
+        # Check if point is on line of polygon. It cannot be strictly inside if so
+        for i in range(0, len(poly)):
+            segment = (poly[i], poly[((i+1) % len(poly))])
+            
+            if (isPtOnLine(segment, pt)):            
+                return True
+
+        # The farthest distance between points in a polygon will be to a vertex
+        # bigDistance is an amount larger than this
+        # Therefore it acts as an "infinite" distance
+        bigDistance = 0
+        for vertex in poly:
+            bigDistance = max(bigDistance, dist(vertex, pt))
+
+        bigDistance += 1 + pt[0]
+
+        # Create a ray that extends from the point and does not intersect any of the
+        #   the vertices. If the ray intersects a vertex, increment the y value of
+        #   the other endpoint and check again
+        ray = (pt, (bigDistance, 0))
+        hitsVertex = 1
+
+        while (hitsVertex):
+            newEndPt = (ray[1][0], (ray[1][1] + 1))
+            ray = (pt, newEndPt)
+
+            for vertex in poly:
+                if (isPtOnLine(ray, vertex)):
+                    hitsVertex = 1
+                    break
+                else:
+                    hitsVertex = 0
+
+        # Count the number of intersetions with the polygon
+        count = 0
+        for i in range(0, len(poly)):
+            segment = (poly[i], poly[((i+1)%len(poly))])
+
+            # self.intersection returns the intersection point if it exists, or None
+            count += 0 if (intersection(ray, segment) == None) else 1
+
+        # If the count is odd, it is inside the polygon
+        if (count % 2):
+            return True
+
+        else:
+            return False
+
     # Equation of a line:
-    #   y = m*x + k
+    #   y = m * x + k
     # x is defined in terms of t by csx
     # y is defined in terms of t by csy
 
@@ -398,8 +684,8 @@ def cubicSplinePolygonCollisions(csx, csy, tVals, poly):
                 # Equation of a line is x = h bc slope is infinite
                 # Intersection point is slightly easier
                 # 0 = At^3 + Bt^2 + Ct + (D - h)
-                coef = copy.copy(tX)
-                coef[3] -= x[0]
+                coeff = copy.copy(tX)
+                coeff[3] -= x[0]
 
             else:
                 # Calculate the slope of the line
@@ -408,10 +694,47 @@ def cubicSplinePolygonCollisions(csx, csy, tVals, poly):
                 # Calculate the y intercept of both line segments
                 k = y[0] - (m * x[0])
 
-                coef = [(tY[0] - m*tX[0]),
-                        (tY[1] - m*tx[1]), 
-                        (tY[2] - m*tx[2]),
-                        (tY[3] - m*tx[3] - k)]
+                coeff = [(tY[0] - m*tX[0]),
+                        (tY[1] - m*tX[1]), 
+                        (tY[2] - m*tX[2]),
+                        (tY[3] - m*tX[3] - k)]
+            
+            # Find the roots of the intersection equation
+            roots = np.roots(coeff)
+
+            print i, " -th cubic spline: "
+            print "Line segment: x: ", x, "\ty: ", y
+
+            print roots
+
+            raw_input(" ")
+
+            # Weed out the garbage points
+            for root in roots:
+                # Doesn't count if it is an imaginary root
+                if not np.isreal(root):
+                    continue
+
+                # The root must be between the start and end of this segment
+                if (root >= 0 and root <= (tVals[i+1] - tVals[i])):
+                    intersections.append(root.real + tVals[i])
+
+            # The end pts count as intersection points if they are inside the poly
+            #   and we are analysing that particular segment
+            if ((i == 0) and isInsidePoly(poly, (tX[0], tY[0]))):
+                # This avoids the edge case where the endpoint is on the poly
+                if (tVals[0] not in intersections):
+                    intersections.append(tVals[0])
+
+            elif ((i == (len(tVals) - 2)) and isInsidePoly(poly, (tX[0], tY[0]))): 
+                # This avoids the edge case where the endpoint is on the poly
+                if (tVals[-1] not in intersections):
+                    intersections.append(tVals[-1])
+
+            # Sort the intersection points to make manipulations easier
+            intersections.sort()
+
+            print intersections
 
 
             # np.roots() to solve for 0's of coeff
@@ -455,15 +778,32 @@ def main():
     n = len(wpxInit)
     t = np.arange(n)
 
-    csx = CubicSpline(t, wpxInit, bc_type = ((1, slopeY), 'not-a-knot'))
-    csy = CubicSpline(t, wpyInit, bc_type = ((1, slopeX), 'not-a-knot'))
+    csx = CubicSpline(t, wpxInit)
+    csy = CubicSpline(t, wpyInit)
 
     # Plot parametric cubic splines
     s = 0.01
     tSpace = np.arange(t[0], t[n-1] + s, s)
     plt.plot(csx(tSpace), csy(tSpace))
 
-    poly = [(250, 500), (700, 400), (800, 600), (400, 200)]
+    poly = [(250, 500), (900, 400), (800, 600), (200, 600)]
+
+    xVals = list()
+    yVals = list()
+            
+    for pt in poly:
+        x, y = pt
+
+        xVals.append(x)
+        yVals.append(y)
+    
+    x, y = poly[0]
+    xVals.append(x)
+    yVals.append(y)
+    plt.plot(xVals, yVals)
+    plt.show(block=False)
+    cubicSplinePolygonCollisions(csx, csy, t, poly)
+
 
     """
     # Starting Point will have some slope dependent on vehicle heading
