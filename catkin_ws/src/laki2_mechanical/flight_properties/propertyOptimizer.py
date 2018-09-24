@@ -13,8 +13,8 @@ airDensity = 1.225
 
 # MotorSpec:
 #   0 - resistance
-#   1 - Kv
-#   2 - Kt
+#   1 - Kv ((rads / s) / V)
+#   2 - Kt (N-m / A)
 #   3 - no load power
 #   4 - max current
 #   5 - weight (g)
@@ -22,7 +22,6 @@ airDensity = 1.225
 # PropSpec
 #   0 - diameter
 #   1 - pitch
-#   2 - Pconst
 
 #----------------------------------------------------------------------------------#
 
@@ -69,62 +68,6 @@ def airDrag(speed, alpha, numArms):
     airDrag = 0.5 * dragCoef * airDensity * speed**2 * areaEff
 
     return airDrag
-
-#----------------------------------------------------------------------------------#
-
-# Returns the x and y components thrust of specified motor/prop combination in N
-# Returns the exit velocity of the air in m/s
-
-# This assumes that the exit velocity over the propeller is constant.
-# Break this assumption using WB Garner Model Airplane Propellers write up
-
-# NOTES: 
-#   Will return a negative number if the speed is creater than the exit velocity 
-#       of the propeller. This is not an error
-#   Assumes vehicleSpeed is only in horizontal direction. 
-#   Thrust does not necessarily act perpendicular to frame
-#   Will return a value for a negative vehicleSpeed
-
-# Inputs:
-#   propDiameter and prop_pitch in inches
-#   vehicleSpeed in m/s
-#   alpha is the pitch angle of the vehicle in rad
-#   isStacked is boolean, 0 for flat frame, 1 for stacked
-
-# TO DO: Validate this with empirical data
-
-def thrust(motorRPM, propSpec, speed, alpha, isStacked):
-    # Propeller Information
-    propDiameter, propPitch = propSpec[0:2]
-
-    # Assume that two motors on the same arm each operate at n% efficiency compared 
-    #   to that of a flat frame
-    stackedCoeff = 0
-
-    # exitVelocity is the speed in m/s of the air after is has gone thru the prop
-    # This is based on the definition of propeller pitch
-    # Multiplied by constants for unit conversions
-    exitVelocity = np.sqrt(2) * motorRPM * propPitch * 0.0254 / 60
-
-    if isStacked:
-        exitVelocity *= stackedCoeff
-    
-    # diskArea is the area of the circle created by the spinning propeller
-    # Multiplied by constant for unit conversion
-    diskArea = np.pi * (0.0254 * propDiameter / 2) ** 2
-    
-    propVelocity = 0.5 * (exitVelocity + np.sin(alpha) * speed)
-
-    # Prop Slip
-    propVelocity *= 0.95
-
-    # mass flow rate = density * area * propeller velocity
-    massFlowRate = (airDensity * diskArea) * propVelocity
-          
-    thrustX = massFlowRate * (exitVelocity * np.sin(alpha) - speed)
-    thrustY = massFlowRate * exitVelocity * np.cos(alpha)
-
-    return (thrustX, thrustY, exitVelocity, propVelocity)
 
 #----------------------------------------------------------------------------------#
 
@@ -223,12 +166,13 @@ def speed(weight, numMotors, numArms, motorRPM, propSpec):
 
 # All constants for item weights are in grams. Converted to N in last step
 
-def weight(numMotors, numArms, motorSpec, batteryCapacity, numBatteryCells, propDiameter, isPayloadAttached):   
+def weight(numMotors, numArms, motorSpec, batteryCapacity, numBatteryCells, 
+        propDiameter, isPayloadAttached):   
     # Values obtained from gram scale at robotics
     esc = 10
     jetson = 144.0
     gps = 18.0
-    ardupilot = 28.1
+    beaglebone = 36.0
     remoteReceiver = 6.0
     powerDistribution = 39.0
     
@@ -238,32 +182,36 @@ def weight(numMotors, numArms, motorSpec, batteryCapacity, numBatteryCells, prop
     electronicsHardware = 68.0
     radioTransceiver = 23.0
     landingLegs = 200.0
-    cameras = 3 * 19.5
+    camera = 19.5 + 2.4
     oneTB_SSD_Harddrive = 81.65
+    networkDevices = 40.0
+    cables = 50.0
     
     # Weights of various frames. Assumes frames weight approximately the same and 
-    #   only the arms increase with size
+    #   only the arms increase with size.
+    # Values from weight of plastic frame, carbon frames ~2.5 times less dense
     # Does not include weight of clamps for arms, that is included in weight of arm
     if (numArms == 3):
-        centerFrame = 288.5
+        centerFrame = 288.5 / 2.5
     
     elif (numArms == 4):
-        centerFrame = 264.4
+        centerFrame = 264.4 / 2.5
 
     elif (numArms == 6):
-        centerFrame = 250.2
+        centerFrame = 250.2 / 2.5
     
     elif (numArms == 8):
-        centerFrame = 248.2
+        centerFrame = 248.2 / 2.5
         
     else:
         # If the frame is not that of a known desing, return an absurd number
         centerFrame = 1e99
     
     # Center of Frame, includes all electronics
-    torso = (jetson + gps + ardupilot + remoteReceiver + powerDistribution + 
+    torso = (jetson + 2 * gps + beaglebone + remoteReceiver + powerDistribution + 
             payloadDropMechanism + usbHub + electronicsHardware + radioTransceiver + 
-            landingLegs + cameras + oneTB_SSD_Harddrive + centerFrame)
+            landingLegs + 3* cameras + oneTB_SSD_Harddrive + centerFrame + 
+            networkDevices + cables)
     
     # Payload Weight
     if isPayloadAttached:
@@ -284,13 +232,13 @@ def weight(numMotors, numArms, motorSpec, batteryCapacity, numBatteryCells, prop
     # Estimate weight of 25mm carbon tube based on creo model
     armPerIn = 17.004 / 16 * 25 / 8.66142
 
-    # Estimate from Creo Model (includes weight of clamps on both sides of arm
-    genericArm = 53.4 + 16
-    armWeight = genericArm + (8 + armPerIn * ((propDiameter / 2) - 0.75))
+    # Estimate from Creo Model (includes weight of clamps on both sides of arm)
+    clampWeight = 53.4 + 16
+    armWeight = clampWeight + (8 + armPerIn * ((propDiameter / 2) - 0.75))
 
     # Estimate Battery Weights
     # Based off ncr batteries (ncr more energy dense that lipo)
-    batteryPerCellPerMilliAmpHr = 0.0153
+    batteryPerCellPerMilliAmpHr = 0.01575
     batteryWeight = numBatteryCells * batteryCapacity * batteryPerCellPerMilliAmpHr
 
     # XOAR 18in prop weighs 31g
@@ -327,7 +275,8 @@ def weight(numMotors, numArms, motorSpec, batteryCapacity, numBatteryCells, prop
 #   dist is a list with the pre and post drop distances needed to travel by the 
 #       vehicle (in that order), in meters
 
-def batteryCapacity(motorRPMs, motorSpec, numMotors, numArms, numBatteryCells, propSpec, dists):
+def batteryCapacity(motorRPMs, motorSpec, numMotors, numArms, numBatteryCells, 
+        propSpec, dists):
     # isStacked is a constant based off the given number of motors and arms
     isStacked = not (numMotors == numArms)
     
@@ -356,22 +305,16 @@ def batteryCapacity(motorRPMs, motorSpec, numMotors, numArms, numBatteryCells, p
     currents = [-1, -1]
     iter = 0
     
-    # Uses a bisection method instead of Newton or Gradient descent because the 
-    #   speed calculation is itself a numerical solver, and thus has no derivatives
-    # Cannot use scipy solver of unary requirements conditions
+    # Did not use scipy solver due to number of unary conditions
     while (convError > 1e-10 and absError > 1e-8):
         # Usually takes about 50 iterations to converge, if it takes more something 
         #   is wrong
-        iter += 1
-        print "iter: ", iter
         if (iter > 1e3):
             return (-1, [-1, -1], [-1, -1], [-1, -1])
         
         # Calculate updated values and errors
         capacity_old = capacity
         capacity = (minCapacity + maxCapacity) / 2
-
-        print "capacity: ", capacity
 
         convError = abs(capacity_old - capacity)
         absError = abs(remainingEnergy)
@@ -399,8 +342,6 @@ def batteryCapacity(motorRPMs, motorSpec, numMotors, numArms, numBatteryCells, p
 
         speeds[1], alphas[1] = speed(weights[1], numMotors, numArms, motorRPMs[1], 
                 propSpec)
-
-        print "speeds: ", speeds
         
         # speed() returns -1's if it cannot hover
         # Cannot hover if too heavy, the only way this function can make reduce 
@@ -443,8 +384,6 @@ def batteryCapacity(motorRPMs, motorSpec, numMotors, numArms, numBatteryCells, p
         # Value to optimize to 0
         remainingEnergy = batteryEnergy - totalEnergy
 
-        print "remainingEnergy: ", remainingEnergy 
-
         # if there is energy remaining, reduce the number of batteries,
         # else increase the number of batteries
         if (remainingEnergy > 0):
@@ -475,22 +414,21 @@ def batteryCapacity(motorRPMs, motorSpec, numMotors, numArms, numBatteryCells, p
 
 # returns (totalPower, motorCurrent)
 
-def powerConsumption(motorRPM, motorSpec, voltage, numMotors, propSpec, speed, alpha, isStacked):
+def powerConsumption(motorRPM, motorSpec, voltage, numMotors, propSpec, speed, 
+        alpha, isStacked):
     
     # Propeller Information
     propDiameter, propPitch = propSpec[0:2]
 
     # Mechanical work done by the prop
     aeroWork = aerodynamicWork(motorRPM, propSpec, speed, alpha, isStacked)
-
-    mechWork = aeroWork[0] * propSpec[2]
     
     # Motor Current is torque / Kt
     # This is the current required with no losses
     motorCurrent = aeroWork[1] / motorSpec[2]
 
     # Voltage is regulated by the ESC
-    motorVoltage = mechWork / motorCurrent
+    motorVoltage = aeroWork[0] / motorCurrent
 
     # Motor resistance is a property specific to each motor
     motorResistance = motorSpec[0]
@@ -506,9 +444,9 @@ def powerConsumption(motorRPM, motorSpec, voltage, numMotors, propSpec, speed, a
     # Algebraic Manipulation:
     #   0 = I^2 * R - V_motor * I + (propPower + noLoadPower)  
     motorCurrents = np.roots([motorResistance, -motorVoltage, 
-            (mechWork + noLoadPower)])
+            (aeroWork[0] + noLoadPower)])
 
-    # Calculate the actual power pulled from the roots: --------------------------#
+    # Calculate the actual power pulled from the roots:
     # If by some miracle the parabola is perfectly placed on the x-axis, that is the 
     #   current draw
     if (len(motorCurrents) == 1):
@@ -516,7 +454,7 @@ def powerConsumption(motorRPM, motorSpec, voltage, numMotors, propSpec, speed, a
     
     # If the solution is complex, the current draw is infinite
     elif (not np.isreal(motorCurrents).any()):
-        motorCurrent = float('inf')
+        motorCurrent = np.inf
     
     # If both currents are valid, the smaller one is valid
     elif (motorCurrents[0] > 0 and motorCurrents[1] > 0):
@@ -524,7 +462,7 @@ def powerConsumption(motorRPM, motorSpec, voltage, numMotors, propSpec, speed, a
         
     # If both currents are negative, something is wrong
     elif (motorCurrents[0] < 0 and motorCurrents[1] < 0):
-        return (float('inf'), float('inf'))
+        return (np.inf, np.inf)
       
     # To reach this point, the roots must be real and exactly one is non-negative
     else:
@@ -536,7 +474,7 @@ def powerConsumption(motorRPM, motorSpec, voltage, numMotors, propSpec, speed, a
     # Current into the esc    
     escCurrent = motorPower / voltage
 
-    # Resistive losses of the esc
+    # Resistive losses of the esc (approximate)
     escLosses = escCurrent**2 * 0.005
 
     # The total power is the sum of all motors
@@ -546,41 +484,6 @@ def powerConsumption(motorRPM, motorSpec, voltage, numMotors, propSpec, speed, a
     totalPower += 50
 
     return (totalPower, motorCurrent)
-
-#----------------------------------------------------------------------------------#
-
-# Calculates the mechanical work, torque required, and rotational speed in rad/s of 
-#   the done/required by propeller
-
-# May have to break constant exit velocity assumption
-
-# TO DO: Include the linear viscous effects of the propeller
-
-# TO DO: Include tip losses of prop
-
-def aerodynamicWork(motorRPM, propSpec, speed, alpha, isStacked):
-    # Propeller Information
-    propDiameter, propPitch = propSpec[0:2]
-
-    # Calculate thrust of that vehicle configuration at that speed and alpha
-    thrustX, thrustY, exitVelocity, propVelocity = thrust(motorRPM, propSpec, speed, 
-            alpha, isStacked)
-
-    # Calculate the total thrust from one motor 
-    totalThrust = np.linalg.norm([thrustX, thrustY])
- 
-    # Total work done on air by propeller
-    power = totalThrust * propVelocity
-
-    # Rotational speed in rad/s
-    omega = motorRPM * 2 * np.pi / 60
-
-    # Assume 80% efficiency
-    power /= 0.8
-
-    torque = power / omega
-
-    return (power, torque, omega)
 
 #----------------------------------------------------------------------------------#
 
