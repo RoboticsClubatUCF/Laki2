@@ -50,18 +50,18 @@ for root, dirs, readFilenames in os.walk(source):
 
                 newData[2] = newData[2].split('\n')[0]
 
-                thrustData = [name, prop[0], prop[1], newData[0], J, newData[1], 
-                    newData[2], 0]
-                
-                if (propData.has_key(hashVal)):
-                    item = propData[hashVal]
-                else:
-                    item = []
-
-                item.append(thrustData)
-                propData[hashVal] = item
-
                 data = rf.readline()
+
+            thrustData = [name, prop[0], prop[1], newData[0], J, newData[1], 
+                newData[2], 0]
+            
+            if (propData.has_key(hashVal)):
+                item = propData[hashVal]
+            else:
+                item = []
+
+            item.append(thrustData)
+            propData[hashVal] = item
 
 
         # Variable Advancement Ratio

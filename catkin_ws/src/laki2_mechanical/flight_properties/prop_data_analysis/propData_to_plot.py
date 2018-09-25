@@ -33,7 +33,7 @@ for element in rf:
     else:
         data = []
 
-    data.append((element[4], element[5]))
+    data.append((element[4], element[6]))
 
     prop[(element[1], element[2])] = data
     propData[element[0]] = prop
@@ -46,7 +46,9 @@ for key1 in propData:
         for datum in data:
             ax.scatter(float(key2[1]), float(datum[0]), float(datum[1]))
             
-ax.set_xlabel('Pitch')
-ax.set_ylabel('Advance')
-ax.set_zlabel('Ct')        
-plt.show()
+    ax.set_xlabel('Pitch')
+    ax.set_ylabel('Advance')
+    ax.set_zlabel('Cp')        
+    plt.show()
+    fig = plt.figure()
+    ax = Axes3D(fig)
