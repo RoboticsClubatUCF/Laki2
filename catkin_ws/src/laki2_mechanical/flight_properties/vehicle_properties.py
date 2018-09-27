@@ -5,6 +5,8 @@ import copy
 import numpy as np
 import scipy
 from scipy.optimize import minimize
+from scipy.interpolate import interp1d
+
 
 # MotorSpec:
 #   0 - resistance
@@ -20,7 +22,7 @@ from scipy.optimize import minimize
 
 
 class vehicle:
-    # Initialize by populating the thrust and power databases
+    # Initialize by populating the thrust and power databases from xoar data
     def __init__(self):
         # Assumed drag to be 1.6 for all configurations
         self.dragCoef = 1.6
@@ -28,68 +30,35 @@ class vehicle:
         # Assume air density to be that of air at sea level
         self.airDensity = 1.225
         
-        # Type of analysis ('lo' or 'hi' for lowest or highest thrust data)
-        self.analysis = 'lo'
-
-        # Create the thrust database (based off UIUC data)
-        csvT = open('polyDataThrust.csv', 'r')
-        rfT = csv.reader(csvT)
-
-        # key is pitch, value is prop dictionary
-        # each prop dictionary has 'lo' and 'hi' as keys and the respective 
-        #   quadratic coefficients as the value
         self.thrustDatabase = dict()
-
-        # Populate the thrust database
-        for element in rfT:
-            if (self.thrustDatabase.has_key(float(element[2]))):
-                propData = self.thrustDatabase[float(element[2])]
-            else:
-                propData = dict()
-            
-            if (propData.has_key(element[6])):
-                prop = propData[element[6]]
-            else:
-                prop = []
-
-            # p is a numpy polynomial object
-            # input is J, output is Ct
-            p = np.poly1d((float(element[3]), float(element[4]), float(element[5])))
-
-            # Append an tuple of (polynomial, (brand, diameter))
-            # The (brand, diameter object is used by other methods to know what prop 
-            #   from the database is being used
-            prop.append((p, (element[0], element[1])))
-
-            # Re-insert the data back into the database (possible not necessary the 
-            #   way python does aliasing
-            propData[element[6]] = prop
-            self.thrustDatabase[float(element[2])] = propData
-
-        # Create the power database (based off UIUC data)
-        csvP = open('polyDataPower.csv', 'r')
-        rfP = csv.reader(csvP)
-
-        # key is pitch, then the value is a set of cubic functions for Cp
         self.powerDatabase = dict()
 
-        # Populate the power database
-        for element in rfP:
-            pitch = float(element[2])
+        # (diameter, pitch, (Ct vals), (Cp vals), (RPMs))
+        xoarData = [(11, 5.5, (0.0964, 0.1025), (0.0596, 0.0569), (4114, 6903)), 
+                    (12, 4.5, (0.0727, 0.0784), (0.0335, 0.0223), (3420, 8050)), 
+                    (13, 4.5, (0.0666, 0.0699), (0.0415, 0.0261), (2614, 7607)),
+                    (14, 5.0, (0.0750, 0.0823), (0.0301, 0.0237), (3010, 7212)),
+                    (15, 5.0, (0.0874, 0.1009, 0.0928, 0.0862, 0.091),
+                            (0.0561, 0.0422, 0.0401, 0.0365, 0.0358), 
+                            (2010, 2919, 3225, 4830, 6615)), 
+                    (15, 5.5, (0.0848, 0.0892), (0.0345, 0.0307), (3518, 6029)),
+                    (16, 6.0, (0.0830, 0.0847), (0.0399, 0.0422), (2641, 6020)),
+                    (17, 6.0, (0.0872, 0.0929), (0.0409, 0.0561), (2811, 5618)), 
+                    (18, 6.5, (0.0879, 0.0936), (0.0413, 0.0412), (2002, 4759)),
+                    (20, 6.0, (0.0631, 0.0635), (0.0266, 0.0220), (2625, 4860)), 
+                    (21, 6.0, (0.0589, 0.0628), (0.0229, 0.0210), (2457, 5700)), 
+                    (21, 12., (0.1023, 0.1091), (0.0747, 0.0506), (2009, 5272)), 
+                    (22, 8.0, (0.0756, 0.0767), (0.0325, 0.0302), (2004, 5300)),
+                    (24, 9.0, (0.0706, 0.0751), (0.0274, 0.0294), (2412, 6167))]
 
-            if (self.powerDatabase.has_key(pitch)):
-                powers = self.powerDatabase[pitch]
-            else:
-                powers = []
+        for prop in xoarData:
+            thrustFunc = interp1d(prop[4], prop[2], 
+                    bounds_error = False, fill_value = "extrapolate")
+            self.thrustDatabase[(prop[0], prop[1])] = thrustFunc
 
-            # p is a numpy polynomial object
-            # input is J, output is cubic function for Cp
-            p = np.poly1d((float(element[3]), float(element[4]), 
-                    float(element[5]), float(element[6])))
-
-            # Insert set of power functions back into dictionary
-            powers.append(p)
-            self.powerDatabase[pitch] = powers
+            powerFunc = interp1d(prop[4], prop[3], 
+                    bounds_error = False, fill_value = "extrapolate") 
+            self.powerDatabase[(prop[0], prop[1])] = powerFunc
 
     #------------------------------------------------------------------------------#
 
@@ -154,8 +123,7 @@ class vehicle:
 
     # All constants for item weights are in grams. Converted to N in last step
 
-    def weight(self, numMotors, numArms, motorSpec, batteryCapacity, 
-            numBatteryCells, propDiameter, isPayloadAttached):   
+    def weight(self, numMotors, numArms, motorSpec, batteryCapacity, numBatteryCells, propDiameter, isPayloadAttached):   
         # Values obtained from gram scale at robotics
         esc = 10
         jetson = 144.0
@@ -267,8 +235,7 @@ class vehicle:
     #   dist is a list with the pre and post drop distances needed to travel by the 
     #       vehicle (in that order), in meters
 
-    def batteryCapacity(self, motorRPMs, motorSpec, numMotors, numArms, 
-            numBatteryCells, propSpec, dists):
+    def batteryCapacity(self, motorRPMs, motorSpec, numMotors, numArms, numBatteryCells, propSpec, dists):
         # Find the battery voltage in order to know the total energy in the battery
         batteryVoltage = 3.7 * numBatteryCells
 
@@ -279,7 +246,7 @@ class vehicle:
         minCapacity = 0
         # Ridiculous number of batteries as an upper limit to the optomization
         # Set max at 100 Ah capacity
-        maxCapacity = 100000
+        maxCapacity = 120000
         
         convError = 1
         absError = 1
@@ -355,13 +322,11 @@ class vehicle:
                 canHovers[1] = 1
 
             # Calculate energy required to finish this leg of the competition
-            powers[0], motorCurrents[0], escCurrents[0] = self.powerConsumption(
-                motorRPMs[0], motorSpec, batteryVoltage, numMotors, propSpec, 
-                speeds[0], alphas[0])
+            powers[0] = self.propProperties(motorRPMs[0], propSpec, speeds[0], alphas[0])[3]
+            powers[0] *= numMotors
 
-            powers[1], motorCurrents[1], escCurrents[1] = self.powerConsumption(
-                motorRPMs[0], motorSpec, batteryVoltage, numMotors, propSpec, 
-                speeds[0], alphas[0])
+            powers[1] = self.propProperties(motorRPMs[1], propSpec, speeds[1], alphas[1])[3]
+            powers[1] *= numMotors
 
             timesOfFlight = [dists[0] / speeds[0], dists[1] / speeds[1]]
 
@@ -369,10 +334,14 @@ class vehicle:
                                 timesOfFlight[1] * powers[1]]
 
             # Find the total energy used in the competition
-            totalEnergy = energyForFlights[0] + energyForFlights[1]
+            energyUsed = energyForFlights[0] + energyForFlights[1]
 
             # Value to optimize to 0
-            remainingEnergy = batteryEnergy - totalEnergy
+            remainingEnergy = batteryEnergy - energyUsed
+
+            print "\nenergyUsed: \t", energyUsed
+            print "batteryEnergy: \t", batteryEnergy
+            print "capacity: \t", capacity
 
             # if there is energy remaining, reduce the number of batteries,
             # else increase the number of batteries
@@ -380,14 +349,17 @@ class vehicle:
                 maxCapacity = capacity
             else:
                 minCapacity = capacity
-        
+
+        # Estimate current pull to be prop power / battery voltage        
+        currents = [powers[0]/batteryVoltage/numMotors, powers[1]/batteryVoltage/numMotors]
+
         # The loop can finish because it converged on a garbage value
         # Check here to see if the result is garbage, and make the last item of the 
         #   return 0 or 1 accordingly
-        if (abs(remainingEnergy) > 10.0 or not canHover[0] or not canHover[1]):
-            return (capacity, motorCurrents, escCurrents, speeds, canHovers, 0)
+        if (abs(remainingEnergy) > 10.0 or not canHovers[0] or not canHovers[1]):
+            return (capacity, currents, speeds, canHovers, 0)
         else:
-            return (capacity, motorCurrents, escCurrents, speeds, canHovers, 1)
+            return (capacity, currents, speeds, canHovers, 1)
 
     #------------------------------------------------------------------------------#    
 
@@ -419,154 +391,28 @@ class vehicle:
         # Advance Ratio (in x direction)
         # Must convert RPM to rev / s and diameter from in to m
         J = np.cos(alpha) * speed / (motorRPM / 60 * diameter * 0.0254)
-        print J
 
-        # Initialize coefficient of thrust to inf or -inf based on the type of 
-        #   analysis. (lowest thrust or highest thrust)
-        # Index 0 is the Ct in the X direction, index 1 is in the Y Direction
-        if (self.analysis == 'lo'):
-            Ct = np.inf
-        else:
-            Ct = -np.inf
+        thrustFunc = self.thrustDatabase[propSpec]
+        Ct_static = thrustFunc(motorRPM)
 
-        # PropKey is the (brand, UIUC_diameter) where the data originated
-        propKey = []
+        # Roughly Linear for J < 0.2
+        Ct = Ct_static * (1 - J)
 
-        # There was one data point for 4.5" and 5.5", and no data for 6.5"
-        # Relationship w/ pitch is linear, average +/- pitch of 0.5 above and below
-        if ((pitch == 4.5) or (pitch == 5.5) or (pitch == 6.5)):
-            # For those pitch values, use the average of the pitch above and below
-            lower = pitch - 0.5
-            higher = pitch + 0.5
-
-            # Ct1 is Ct of the pitch slightly lower, Ct2 is the Ct slightly above
-            if (self.analysis == 'lo'):
-                Ct1 = np.inf
-                Ct2 = np.inf
-            else:
-                Ct1 = -np.inf
-                Ct2 = -np.inf
-
-            # Take the data from the props below the current pitch
-            prop = self.thrustDatabase[lower]
-            data = prop[self.analysis]
-
-            # Loop thru all props of lower pitch to find the lowest or highest val
-            #   (Depending on if the analysis wants 'lo' or 'hi')
-            for datum in data:
-                newCt = datum[0](J)
-
-                if (self.analysis == 'lo'):
-                    if (newCt < Ct1): 
-                        Ct1 = newCt
-                        propKey = [datum[1], None]
-                    
-                else:
-                    if (newCt > Ct1): 
-                        Ct1 = newCt
-                        propKey = [datum[1], None]
-
-            # Take the data from the props above the current pitch
-            prop = self.thrustDatabase[higher]
-            data = prop[self.analysis]
-
-            # Loop thru all props of higher pitch to find the lowest or highest val
-            #   (Depending on if the analysis wants 'lo' or 'hi')
-            for datum in data:
-                newCt = datum[0](J)
-
-                if (self.analysis == 'lo'):
-                    if (newCt < Ct2): 
-                        Ct2 = newCt
-                        propKey[1] = datum[1]
-                    
-                else:
-                    if (newCt > Ct2): 
-                        Ct2 = newCt
-                        propKey[1] = datum[1]
-
-            # One possible value of Ct is average of the pitch just below and just 
-            #   above the current pitch
-            Ct = (Ct1 + Ct2) / 2
-
-        # There was no data for a prop with pitch 6.5"
-        if (pitch != 6.5):
-            # Take the data from the props below the current pitch
-            prop = self.thrustDatabase[pitch]
-            data = prop[self.analysis]
-
-            # Loop thru all props of pitch to find the lowest or highest value
-            #   (Depending on if the analysis wants 'lo' or 'hi')
-            for datum in data:
-                newCt = datum[0](J)
-
-                if (self.analysis == 'lo'):
-                    if (newCt < Ct): 
-                        Ct = newCt
-                        propKey = [datum[1]]
-                    
-                else:
-                    if (newCt > Ct): 
-                        Ct = newCt
-                        propKey = [datum[1]]
-
-        # Thrust from the standard propeller model
-        thrustTotal = (Ct * self.airDensity * (motorRPM / 60)**2 
-                        * (diameter * 0.0254)**4)
-
-        # Thrust in the X and Y directions
-        # Return Values:
-        thrustX = thrustTotal * np.sin(alpha)
-        thrustY = thrustTotal * np.cos(alpha)
-
-        if (self.analysis == 'lo'):
-            Cp = np.inf
-            Cp1 = np.inf
-            Cp2 = np.inf
-        else:
-            Cp = -np.inf
-            Cp1 = -np.inf
-            Cp2 = -np.inf
-        
-        if ((pitch == 4.5) or (pitch == 5.5) or (pitch == 6.5)):
-            lower = pitch - 0.5
-            higher = pitch + 0.5
-
-            powers = self.powerDatabase[lower]
-            for CpFunc in powers:
-                if (self.analysis == 'lo'):
-                    Cp1 = min(CpFunc(J), Cp1)                
-                        
-                else:
-                    Cp1 = max(CpFunc(J), Cp1)
-
-            powers = self.powerDatabase[higher]
-            for CpFunc in powers:
-                if (self.analysis == 'lo'):
-                    Cp2 = min(CpFunc(J), Cp2)                
-                        
-                else:
-                    Cp2 = max(CpFunc(J), Cp2)
-
-            Cp = (Cp1 + Cp2) / 2
-
-        else:
-            powers = self.powerDatabase[pitch]
-            for CpFunc in powers:
-                if (self.analysis == 'lo'):
-                    Cp = min(CpFunc(J), Cp)                
-                        
-                else:
-                    Cp = max(CpFunc(J), Cp)
-
-        # Power from the standard propeller model
-        power = Cp * self.airDensity * (motorRPM / 60)**3 * (diameter * 0.0254)**5
-
-        # Torque is just Cp / (2*pi) 
+        powerFunc = self.powerDatabase[propSpec]
+        # Roughly constant for J < 0.2 
+        Cp = powerFunc(motorRPM) * (1 - 0.5*J)
         Cq = Cp / (2 * np.pi)
 
-        # Torque from the standard propeller model
+        # Calculate Thrust
+        thrust = Ct * self.airDensity * (motorRPM / 60)**2 * (diameter * 0.0254)**4
+        thrustX = np.sin(alpha) * thrust
+        thrustY = np.cos(alpha) * thrust
+
+        # Calculate back torque
         torque = Cq * self.airDensity * (motorRPM / 60)**2 * (diameter * 0.0254)**5
+
+        # Calculate power required
+        power = Cp * self.airDensity * (motorRPM / 60)**3 * (diameter * 0.0254)**5
 
         # Package everything nicely and return it
         return (thrustX, thrustY, torque, power)
@@ -581,7 +427,7 @@ class vehicle:
         #   Assumed 1.1 at hover and an additional 1.4 for every 10 m/s of speed
         # Ratio required due to fighting wind, balancing, etc
         # See references for scaling values
-        return (1.1 + 1.4 * speed / 10)
+        return (1.1 + 0.7 * speed / 10)
 
     #------------------------------------------------------------------------------#
 
@@ -606,7 +452,7 @@ class vehicle:
 
     # Returns: (speed, alpha)
     #   speed is the final speed of the vehicle in m/s
-    #   alpha is the pitch angle of the vehicle in rad
+    #   alpha is the pitch angle of the vehicle in rad     
 
     def speed(self, weight, numMotors, numArms, motorRPM, propSpec):
         propDiameter, propPitch = propSpec[0:2]
@@ -633,10 +479,11 @@ class vehicle:
             verticalThrust = thrustY * numMotors
 
             thrustToWeight = self.thrustToWeight(speed)
+            artificialWeight = thrustToWeight * weight
 
             # netVerticalThrust is (weight - verticalThrust)
             #   increased, 'artifical',  weight is necessary for control of vehicle
-            netVerticalThrust =  thrustToWeight * weight - verticalThrust
+            netVerticalThrust = artificialWeight - verticalThrust
         
             # Forces in the x:
             horizontalThrust = thrustX * numMotors
@@ -644,7 +491,7 @@ class vehicle:
 
             # Additional forces are from the drone fighting the wind, balancing, etc
             # See references for scaling values
-            netHorizontalThrust = horizontalThrust - 8.14 * thrustToWeight * drag
+            netHorizontalThrust = horizontalThrust - 0.05 * weight - drag
 
             return np.linalg.norm([netVerticalThrust, netHorizontalThrust])
 
@@ -668,91 +515,6 @@ class vehicle:
             return (-1, -1)
 
     #------------------------------------------------------------------------------#
-
-    # Calculates the total power and current consumption per motor of the vehicle
-
-    # Inputs:
-    #   motorRPM and numMotors are the motor RPM and number of motors respectively
-    #   propSpec is a list of relevant data of the propeller.
-    #       See start of document for info    
-    #   voltage is the voltage being supplied to the motors
-    #   speed is the vehicle speed in m/s
-    #   alpha is the angle of the vehicle in radians
-
-    # returns (totalPower, motorCurrent, escCurrent)
-
-    def powerConsumption(self, motorRPM, motorSpec, voltage, numMotors, propSpec, 
-            speed, alpha):
-        # Propeller Information
-        propDiameter, propPitch = propSpec[0:2]
-
-        # Mechanical work done by the prop
-        aeroTorque, aeroWork = self.propProperties(motorRPM, propSpec, speed, alpha)[2:4]
-        print aeroTorque, aeroWork
-
-
-        # Motor Current is torque / Kt
-        # This is the current required with no losses
-        motorCurrent = aeroTorque / motorSpec[2]
-
-        # Voltage is regulated by the ESC
-        motorVoltage = aeroWork / motorCurrent
-
-        # Motor resistance is a property specific to each motor
-        motorResistance = motorSpec[0]
-
-        # No load power is the power pulled to do no work
-        noLoadPower = motorSpec[3]
-
-        # Calculate the motor current after motor losses
-        # P_in = P_out + I^2 * R + V_motor * I_0
-        # noLoadPower = V_motor * I_0
-        # P_in = V_motor * I
-        # P_out = propPower
-        # Algebraic Manipulation:
-        #   0 = I^2 * R - V_motor * I + (propPower + noLoadPower)  
-        motorCurrents = np.roots([motorResistance, -motorVoltage, 
-                (aeroWork + noLoadPower)])
-
-        # Calculate the actual power pulled from the roots:
-        # If by some miracle the parabola is perfectly placed on the x-axis, that is 
-        #   the current draw
-        if (len(motorCurrents) == 1):
-            motorCurrent = motorCurrents[0]
-        
-        # If the solution is complex, the current draw is infinite
-        elif (not np.isreal(motorCurrents).any()):
-            motorCurrent = np.inf
-        
-        # If both currents are valid, the smaller one is valid
-        elif (motorCurrents[0] > 0 and motorCurrents[1] > 0):
-            motorCurrent = np.min(motorCurrents)
-            
-        # If both currents are negative, something is wrong
-        elif (motorCurrents[0] < 0 and motorCurrents[1] < 0):
-            return (np.inf, np.inf)
-          
-        # To reach this point, the roots must be real and exactly one is 
-        #   non-negative
-        else:
-            motorCurrent = max(motorCurrents)
-
-        # Power = V * I
-        motorPower = motorVoltage * motorCurrent
-
-        # Current into the esc    
-        escCurrent = motorPower / voltage
-
-        # Resistive losses of the esc (approximate)
-        escLosses = escCurrent**2 * 0.005
-
-        # The total power is the sum of all motors
-        totalPower = motorPower * numMotors + escLosses
-
-        # Add liberal estimate power required by all electronics
-        totalPower += 50
-
-        return (totalPower, motorCurrent, escCurrent)
 
 #----------------------------------------------------------------------------------#
 
