@@ -2,7 +2,7 @@ import os
 import csv
 import operator
 
-source = '/home/nick/Desktop/Robotics/References/Propeller/UIUC Prop Data/UIUC-propDB/volume-2/data'
+source = '/home/nick/Desktop/Robotics/References/Propeller/UIUC Prop Data/UIUC-propDB/volume-1/data'
 
 thrustData = []
 csvf = open('data.csv', 'w')
@@ -37,6 +37,8 @@ for root, dirs, readFilenames in os.walk(source):
 
         # Stationary Data, J = 0
         if (newTitle[0] == 'RPM'):            
+            pass
+            """
             J = 0
             data = rf.readline()
 
@@ -62,7 +64,7 @@ for root, dirs, readFilenames in os.walk(source):
 
             item.append(thrustData)
             propData[hashVal] = item
-
+            """
 
         # Variable Advancement Ratio
         elif (newTitle[0] == 'J'):

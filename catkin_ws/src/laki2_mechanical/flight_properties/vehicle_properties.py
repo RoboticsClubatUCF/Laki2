@@ -70,26 +70,32 @@ class vehicle:
         csvP = open('polyDataPower.csv', 'r')
         rfP = csv.reader(csvP)
 
-        # key is (brand, pitch,  UIUC_diameter), then the value is cubic function 
-        #   for Cp
+        # key is pitch, then the value is a set of cubic functions for Cp
         self.powerDatabase = dict()
 
         # Populate the power database
         for element in rfP:
+            pitch = float(element[2])
+
+            if (self.powerDatabase.has_key(pitch)):
+                powers = self.powerDatabase[pitch]
+            else:
+                powers = []
+
             # p is a numpy polynomial object
             # input is J, output is cubic function for Cp
             p = np.poly1d((float(element[3]), float(element[4]), 
                     float(element[5]), float(element[6])))
 
-            # Each key is 1-1 from the spreadsheet
-            # Insert p for the (brand, pitch, UIUC_diameter)
-            key = (element[0], float(element[1]), float(element[2]))
-            self.powerDatabase[key] = p
+            # Insert set of power functions back into dictionary
+            powers.append(p)
+            self.powerDatabase[pitch] = powers
 
     #------------------------------------------------------------------------------#
 
     # Lookup table for lateral cross sectional area of requested drone in m^2
     # Estimate values based on quick frame designs
+    # Values from quick Creo Parametric model
     # Returns (topArea, frontArea)
     def lookupLateralArea(self, numArms):
         if (numArms == 3):
@@ -122,7 +128,7 @@ class vehicle:
     #   numArms is an integer for the number of arms on the vehicle
     def airDrag(self, speed, alpha, numArms):
         # Populate lateral areas of vehicle
-        topArea, frontArea = lookupLateralArea(numArms)
+        topArea, frontArea = self.lookupLateralArea(numArms)
         
         # Calculate lateral areas of the vehicle to oncoming air
         areaEff = topArea * np.sin(alpha) + frontArea * np.cos(alpha)
@@ -262,7 +268,7 @@ class vehicle:
     #       vehicle (in that order), in meters
 
     def batteryCapacity(self, motorRPMs, motorSpec, numMotors, numArms, 
-            numBatteryCells, propSpec, dists, maxMotorCurrent, maxEscCurrent):
+            numBatteryCells, propSpec, dists):
         # Find the battery voltage in order to know the total energy in the battery
         batteryVoltage = 3.7 * numBatteryCells
 
@@ -314,17 +320,17 @@ class vehicle:
 
             # Weight is a function of the number of batteries and payload attachment
             weights = [
-                weight(numMotors, numArms, motorSpec, capacity, numBatteryCells, 
-                        propDiameter, 1),
+                self.weight(numMotors, numArms, motorSpec, capacity, 
+                        numBatteryCells, propDiameter, 1),
 
-                weight(numMotors, numArms, motorSpec, capacity, numBatteryCells, 
-                        propDiameter, 0)]
+                self.weight(numMotors, numArms, motorSpec, capacity, 
+                        numBatteryCells, propDiameter, 0)]
 
             # Find speed and angle at which the drone will fly
-            speeds[0], alphas[0] = speed(weights[0], numMotors, numArms, 
+            speeds[0], alphas[0] = self.speed(weights[0], numMotors, numArms, 
                     motorRPMs[0], propSpec)
 
-            speeds[1], alphas[1] = speed(weights[1], numMotors, numArms, 
+            speeds[1], alphas[1] = self.speed(weights[1], numMotors, numArms, 
                     motorRPMs[1], propSpec)
             
             # speed() returns -1's if it cannot hover
@@ -349,11 +355,11 @@ class vehicle:
                 canHovers[1] = 1
 
             # Calculate energy required to finish this leg of the competition
-            powers[0], motorCurrents[0], escCurrents[0] = powerConsumption(
+            powers[0], motorCurrents[0], escCurrents[0] = self.powerConsumption(
                 motorRPMs[0], motorSpec, batteryVoltage, numMotors, propSpec, 
                 speeds[0], alphas[0])
 
-            powers[1], motorCurrents[1], escCurrents[1] = powerConsumption(
+            powers[1], motorCurrents[1], escCurrents[1] = self.powerConsumption(
                 motorRPMs[0], motorSpec, batteryVoltage, numMotors, propSpec, 
                 speeds[0], alphas[0])
 
@@ -413,6 +419,7 @@ class vehicle:
         # Advance Ratio (in x direction)
         # Must convert RPM to rev / s and diameter from in to m
         J = np.cos(alpha) * speed / (motorRPM / 60 * diameter * 0.0254)
+        print J
 
         # Initialize coefficient of thrust to inf or -inf based on the type of 
         #   analysis. (lowest thrust or highest thrust)
@@ -508,29 +515,49 @@ class vehicle:
                         * (diameter * 0.0254)**4)
 
         # Thrust in the X and Y directions
+        # Return Values:
         thrustX = thrustTotal * np.sin(alpha)
         thrustY = thrustTotal * np.cos(alpha)
 
-        # Coefficient of power is based off the propeller used
+        if (self.analysis == 'lo'):
+            Cp = np.inf
+            Cp1 = np.inf
+            Cp2 = np.inf
+        else:
+            Cp = -np.inf
+            Cp1 = -np.inf
+            Cp2 = -np.inf
+        
+        if ((pitch == 4.5) or (pitch == 5.5) or (pitch == 6.5)):
+            lower = pitch - 0.5
+            higher = pitch + 0.5
 
-        # if there are two values, thrust and power are averaged over pitch just 
-        #   above and just below
-        if (len(propKey) > 1):
-            CpFunc = self.powerDatabase[(propKey[0][0], 
-                    float(propKey[0][1]), lower)]
-            Cp = CpFunc(J)
+            powers = self.powerDatabase[lower]
+            for CpFunc in powers:
+                if (self.analysis == 'lo'):
+                    Cp1 = min(CpFunc(J), Cp1)                
+                        
+                else:
+                    Cp1 = max(CpFunc(J), Cp1)
 
-            CpFunc = self.powerDatabase[(propKey[1][0], 
-                    float(propKey[1][1]), higher)]
-            Cp += CpFunc(J)
+            powers = self.powerDatabase[higher]
+            for CpFunc in powers:
+                if (self.analysis == 'lo'):
+                    Cp2 = min(CpFunc(J), Cp2)                
+                        
+                else:
+                    Cp2 = max(CpFunc(J), Cp2)
 
-            # Average of 2 values
-            Cp /= 2
+            Cp = (Cp1 + Cp2) / 2
 
         else:
-            CpFunc = self.powerDatabase[(propKey[1][0], 
-                    float(propKey[1][1]), pitch)]
-            Cp += CpFunc(J)
+            powers = self.powerDatabase[pitch]
+            for CpFunc in powers:
+                if (self.analysis == 'lo'):
+                    Cp = min(CpFunc(J), Cp)                
+                        
+                else:
+                    Cp = max(CpFunc(J), Cp)
 
         # Power from the standard propeller model
         power = Cp * self.airDensity * (motorRPM / 60)**3 * (diameter * 0.0254)**5
@@ -546,8 +573,21 @@ class vehicle:
 
     #------------------------------------------------------------------------------#
 
+    # Calculates the required thrust to weight ratio for a given speed
+
+    def thrustToWeight(self, speed):
+        # Assume some thrust to weight ratio that increases linear with speed
+        # Assumed because controlling vehicle requires ratio greater than 1.0
+        #   Assumed 1.1 at hover and an additional 1.4 for every 10 m/s of speed
+        # Ratio required due to fighting wind, balancing, etc
+        # See references for scaling values
+        return (1.1 + 1.4 * speed / 10)
+
+    #------------------------------------------------------------------------------#
+
     # Calculates the max speed of the vehicle in m/s
     # Returns all -1's is vehicle cannot sustain lift
+    #   DO NOT FORGET THRUST:WEIGHT AT HOVER IS NOT 0
     # Returns all -1's for inputs that don't not converge after 1000 iterations
 
     # Calculates the steady state, steady level flight, speed and pitch angle of the 
@@ -573,28 +613,26 @@ class vehicle:
 
         # Calculate the thrust at rest and no pitch angle to determine if the drone 
         #   can hover
-        thrustX, thrustY = propProperties(motorRPM, propSpec, 0, 0)[0:2]
+        thrustX, thrustY = self.propProperties(motorRPM, propSpec, 0, 0)[0:2]
 
         # Find the total thrust of the vehicle to hover
         totalThrust = thrustY * numMotors
 
-        # If the totalThrust is less than the weight, it cannot hover
-        if(totalThrust < weight):
+        # If the totalThrust is less than (thrust:weight * weight), it cannot hover
+        if(totalThrust < (self.thrustToWeight(0) * weight)):
             return (-1, -1)
 
         # Function to be minimized
         def speedEvaluator(x):
             speed, alpha = x
             # Find thrust at this speed
-            thrustX, thrustY = propProperties(motorRPM, propSpec, speed, alpha)[0:2]
+            thrustX, thrustY = self.propProperties(motorRPM, propSpec, speed, 
+                    alpha)[0:2]
 
             # Forces in the y:
             verticalThrust = thrustY * numMotors
 
-            # Assume some thrust to weight ratio that increases linear with speed
-            # Assumed because controlling vehicle requires ratio greater than 1.0
-            #   Assumed 1.4 at hover and an additional 1.0 for every 10 m/s of speed
-            thrustToWeight = (1.4 + 1.0 * speed / 10)
+            thrustToWeight = self.thrustToWeight(speed)
 
             # netVerticalThrust is (weight - verticalThrust)
             #   increased, 'artifical',  weight is necessary for control of vehicle
@@ -602,9 +640,11 @@ class vehicle:
         
             # Forces in the x:
             horizontalThrust = thrustX * numMotors
-            drag = airDrag(speed, alpha, numArms)
-            
-            netHorizontalThrust = horizontalThrust - drag
+            drag = self.airDrag(speed, alpha, numArms)
+
+            # Additional forces are from the drone fighting the wind, balancing, etc
+            # See references for scaling values
+            netHorizontalThrust = horizontalThrust - 8.14 * thrustToWeight * drag
 
             return np.linalg.norm([netVerticalThrust, netHorizontalThrust])
 
@@ -617,10 +657,15 @@ class vehicle:
         #   0 < alpha < pi / 2    
         bnds = ((0, None), (0, np.pi/2),)
 
-        speed, alpha = minimize(speedEvaluator, [speed0, alpha0], method = 'SLSQP', 
-                bounds = bnds, tol = 1e-8).x
+        opt = minimize(speedEvaluator, [speed0, alpha0], method = 'SLSQP', 
+                bounds = bnds, tol = 1e-8)
 
-        return (speed, alpha)
+        if (opt.success):
+            speed, alpha = opt.x
+            return (speed, alpha)
+        
+        else:
+            return (-1, -1)
 
     #------------------------------------------------------------------------------#
 
@@ -642,8 +687,10 @@ class vehicle:
         propDiameter, propPitch = propSpec[0:2]
 
         # Mechanical work done by the prop
-        aeroTorque, aeroWork = propProperties(motorRPM, propSpec, speed, alpha)[2:4]
-        
+        aeroTorque, aeroWork = self.propProperties(motorRPM, propSpec, speed, alpha)[2:4]
+        print aeroTorque, aeroWork
+
+
         # Motor Current is torque / Kt
         # This is the current required with no losses
         motorCurrent = aeroTorque / motorSpec[2]

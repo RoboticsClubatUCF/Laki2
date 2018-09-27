@@ -5,7 +5,7 @@ import numpy as np
 from scipy.optimize import curve_fit
 import matplotlib.pyplot as plt
 
-csvf = open('propData.csv', 'r')
+csvf = open('data.csv', 'r')
 rf = csv.reader(csvf)
 
 csvR = open('powerPolyData.csv', 'w')
