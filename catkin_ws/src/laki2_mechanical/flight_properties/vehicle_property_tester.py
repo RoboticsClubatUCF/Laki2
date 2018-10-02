@@ -10,7 +10,7 @@ def main():
     # Propeller Data
     propSpec = (18, 6.5)
 
-    motorRPM = 3624
+    motorRPM = 6000
     motorRPMs = [6005, 6000]
     dists = [6437.38, 4023.36]
 
@@ -21,11 +21,16 @@ def main():
 
     print "propProperties: ", drone.propProperties(motorRPM, propSpec, 0, 0)
 
-    #print "speed, alpha: ", drone.speed(weight, 8, 8, motorRPM, propSpec)
+    print "euler speed: ", drone.eulerSpeed(weight, 8, 8, motorRPM, propSpec)
+
+
+    print "speed, alpha: ", drone.speed(weight, 8, 8, motorRPM, propSpec)
 
     #drone.powerConsumption(5200, motorSpec, 3.7*6, 8, propSpec, 8.02, 0.08)
 
-    print drone.batteryCapacity(motorRPMs, motorSpec, 8, 8, 6, propSpec, dists)
+    #print drone.batteryCapacity(motorRPMs, motorSpec, 8, 8, 6, propSpec, dists)
+
+    print drone.alpha(4.0, weight, 8, 5000, propSpec)
 
 if (__name__ == "__main__"):
     main()

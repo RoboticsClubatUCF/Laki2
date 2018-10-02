@@ -62,7 +62,9 @@ for i in range(len(tvals) - 1):
 
 	# add the segment length to the total path length
 
-	totalLength += length 
+	totalLength += length
+
+return totalLength
 
 print "The total length from t = 0 to t = ", len(tvals), " is ", totalLength, "\n"
 

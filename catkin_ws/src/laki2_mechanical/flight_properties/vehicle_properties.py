@@ -431,6 +431,61 @@ class vehicle:
 
     #------------------------------------------------------------------------------#
 
+    def alpha(self, speed, weight, numMotors, motorRPM, propSpec):
+        def alphaEval(x):
+            alpha = x[0]
+            thrustY = self.propProperties(motorRPM, propSpec, speed, alpha)[1]
+
+            # Find the total thrust of the vehicle to hover
+            verticalThrust = thrustY * numMotors   
+
+            thrustToWeight = self.thrustToWeight(speed)
+            artificialWeight = thrustToWeight * weight
+
+            # netVerticalThrust is (weight - verticalThrust)
+            #   increased, 'artifical',  weight is necessary for control of vehicle
+            netVerticalThrust = artificialWeight - verticalThrust
+
+            return abs(netVerticalThrust)
+
+        alpha0 = np.pi/4
+        bnds = ((0, np.pi/2),)
+
+        opt = minimize(alphaEval, alpha0, method = 'SLSQP', 
+                bounds = bnds, tol = 1e-10)
+
+        return opt.x[0]
+
+    #------------------------------------------------------------------------------#
+
+    def eulerSpeed(self, weight, numMotors, numArms, motorRPM, propSpec):
+        speed = 0
+        mass = weight / 9.81
+        timeStep = 0.01
+        t = 0
+
+        while (t < 0.5):
+            alpha = self.alpha(speed, weight, numMotors, motorRPM, propSpec)
+
+            drag = self.airDrag(speed, alpha, numArms)
+            thrustX = self.propProperties(motorRPM, propSpec, speed, alpha)[0] 
+            totalThrust = thrustX * numMotors
+
+            netThrust = totalThrust - thrustX
+            acceleration = netThrust / mass    
+            speed += acceleration * timeStep
+
+            t += timeStep
+
+            if ((acceleration * timeStep) < 1e-6):
+                break
+
+        return speed
+
+
+
+    #------------------------------------------------------------------------------#
+
     # Calculates the max speed of the vehicle in m/s
     # Returns all -1's is vehicle cannot sustain lift
     #   DO NOT FORGET THRUST:WEIGHT AT HOVER IS NOT 0
@@ -452,7 +507,7 @@ class vehicle:
 
     # Returns: (speed, alpha)
     #   speed is the final speed of the vehicle in m/s
-    #   alpha is the pitch angle of the vehicle in rad     
+    #   alpha is the pitch angle of the vehicle in rad
 
     def speed(self, weight, numMotors, numArms, motorRPM, propSpec):
         propDiameter, propPitch = propSpec[0:2]
