@@ -142,7 +142,7 @@ class Takeoff(smach.State):
 class Standby(smach.State):
 	
 	def __init__(self):
-		smach.State.__init__(self, outcomes=['toLOCAL','exit'])
+		smach.State.__init__(self, outcomes=['toTO_LOCAL','exit'])
 
 	def execute(self, userdata):
 	
@@ -218,7 +218,7 @@ def main():
 		with flight_sm:
 
 			smach.StateMachine.add('TO_LOCAL', ToLocal(), transitions={'toSTANDBY':'STANDBY','exit':'exit_flight_sm'})
-			smach.StateMachine.add('STANDBY', Standby(), transitions={'toTo_LOCAL':'TO_LOCAL','exit':'exit_flight_sm'}
+			smach.StateMachine.add('STANDBY', Standby(), transitions={'toTO_LOCAL':'TO_LOCAL','exit':'exit_flight_sm'})
 
 		smach.StateMachine.add('FLIGHT_SM', flight_sm, transitions={'exit_flight_sm':'exit_sm'})	
 
