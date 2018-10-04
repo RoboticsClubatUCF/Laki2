@@ -7,14 +7,14 @@
 
 	<include file="$(find px4)/launch/mavros_posix_sitl.launch">
 		<!-- <arg name="sdf" value="son_iris"/> -->
-		<arg name="sdf" value="$(find lakitu)/models/iris/iris.sdf"/>
+		<arg name="sdf" value="$(find laki2_sim)/models/iris/iris.sdf"/>
 		<arg name="paused" value="false"/>
 		<!-- <arg name="headless" value="true"/> -->
 	</include>
 
 	<!-- to see output of state machine, add output="screen" to following line -->
-	<node pkg="laki2_sm" type="main.py" name="laki2_sm" output="screen"/>
-	<node pkg="laki2_sm" type="mav_datalink.py" name='mav_data' output="screen"/>
+	<node pkg="laki2_states" type="main.py" name="laki2_sm" output="screen"/>
+	<node pkg="laki2_states" type="mav_datalink.py" name='mav_data' output="screen"/>
 
 
 </launch>	

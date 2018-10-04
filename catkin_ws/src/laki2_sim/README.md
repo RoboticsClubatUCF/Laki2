@@ -20,7 +20,7 @@ LAUNCHING SIMULATOR:
   
   Publishing flight targets: (MUST BE DONE FIRST)
 	
-	rostopic pub -l /lakitu/flight_target geometry_msgs/PoseStamped {'header: {stamp: now},pose: {position: {x: 0,y: 0,z: 5}, orientation: {x: 0,y: 0,z: 0,w: 0}'}} -r 120
+	rostopic pub -l /laki2/flight_target/local geometry_msgs/PoseStamped {'header: {stamp: now},pose: {position: {x: 0,y: 0,z: 5}, orientation: {x: 0,y: 0,z: 0,w: 0}'}} -r 120
   
   Flipping start switch:
 
