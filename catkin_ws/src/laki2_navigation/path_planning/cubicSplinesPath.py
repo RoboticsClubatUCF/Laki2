@@ -2,9 +2,12 @@ from __future__ import division
 import sys
 import numpy as np
 import scipy
+import copy
 import Polygon
 from scipy.interpolate import CubicSpline, interp1d
 from scipy.optimize import minimize
+from scipy import integrate
+from scipy.misc import derivative
 import matplotlib.pyplot as plt
 from matplotlib.pyplot import Circle
 from matplotlib.collections import PatchCollection
@@ -17,11 +20,11 @@ from matplotlib.collections import PatchCollection
 
 # If successful, returns (t_opt, True) where t_opt is the optimal spacing
 # If unsuccessful, returns (t, False) where t is the original spacing
-def optimizeParameterSpacing(wpx, wpy, t, costFunc):
-    def evalSpacing(x):
+def optimizeParameterSpacing(wpx, wpy, tVals, costFunc):
+    def evalSpacing(x, tVals):
         # The first two parameters are fixed
         # Any scalar multiple of the spacing results in the same spline
-        spacing = [t[0], t[1]]
+        spacing = [tVals[0], tVals[1]]
 
         # Add the other (n-2) terms to t
         for param in x:
@@ -37,20 +40,22 @@ def optimizeParameterSpacing(wpx, wpy, t, costFunc):
         # Just for testing, keeps z at same altitude the whole time
         wpz = np.array(len(wpx))
         wpz.fill(200)
-        csy = CubicSpline(spacing, wpy)
+        csz = CubicSpline(spacing, wpy)
 
         # Return some cost of the spline
-        return costFunc(csx, csy, csz, spacing)
+        length = costFunc(csx, csy, csz, spacing)
+        print (length)
+        return length
 
     #--------------------------------------------------------------------------#
 
     x0 = []
-    for i in xrange(len(t)):
+    for i in range(len(tVals)):
         if (i == 0 or i == 1):
             continue
 
         # Difference between the current     
-        diff = t[i] - t[i-1]
+        diff = tVals[i] - tVals[i-1]
         x0.append(np.log(diff))
 
     # x is now an array representing the natural log of the difference between 
@@ -62,7 +67,8 @@ def optimizeParameterSpacing(wpx, wpy, t, costFunc):
     # This allows for the elements of x to take on any real value while ensuring
     #   that the respective spacing is strictly increasing
     # TO DO: probably give some kind of jacobian to make this faster
-    opt_obj = minimize(evalSpacing, x0, method = 'Nelder-Mead', tol = 1e-8)
+    opt_obj = minimize(evalSpacing, x0, tVals, method = 'Nelder-Mead', tol = 1e-8, 
+                    options = {'maxiter':5000})
 
     # Determine if the optimization was successful (it should be in all cases)
     if (opt_obj.success):
@@ -70,7 +76,7 @@ def optimizeParameterSpacing(wpx, wpy, t, costFunc):
 
         # The first two parameters are fixed
         # Any scalar multiple of the spacing results in the same spline
-        t_opt = [0, t[1]]
+        t_opt = [tVals[0], tVals[1]]
 
         # Add the other (n-2) terms to t
         for param in x_opt:
@@ -82,7 +88,7 @@ def optimizeParameterSpacing(wpx, wpy, t, costFunc):
 
     # If unsucessful, deal with it. Life isn't fair
     else:
-        return (t, False)
+        return (tVals, False)
 
 #----------------------------------------------------------------------------------#
 
@@ -96,7 +102,7 @@ def arcLength(csx, csy, csz, tVals):
     totalLength = 0
 
     # Loop thru all splines in the given object
-    for i in range(len(tvals) - 1):
+    for i in range(len(tVals) - 1):
         # tX is a list of the coefficients of the equation x = At^3 + Bt^2 + Ct + D
         # tY is a list of the coefficients of the equation y = at^3 + bt^2 + ct + d
         # tZ is a list of the coefficients of the equation z = aat^3 + bbt^2 + cct + dd
@@ -104,21 +110,21 @@ def arcLength(csx, csy, csz, tVals):
         tY = [csy.c[0][i], csy.c[1][i], csy.c[2][i], csy.c[3][i]]
         tZ = [csz.c[0][i], csz.c[1][i], csz.c[2][i], csz.c[3][i]]
         
-        # define the parametric functions fx(t), fy(t), and fz(t)
-        def fx(t):
-            return tX[0]*t**3 + tX[1]*t**2 + tX[2]*t + tX[3]
+        # define the parametric functions fx_dt(t), fy_dt(t), and fz_dt(t)
+        def fx_dt(t):
+            return 3*tX[0]*t**2 + 2*tX[1]*t + tX[2]
         
-        def fy(t): 
-            return tY[0]*t**3 + tY[1]*t**2 + tY[2]*t + tY[3]
+        def fy_dt(t): 
+            return 3*tY[0]*t**2 + 2*tY[1]*t + tY[2]
 
-        def fz(t): 
-            return tZ[0]*t**3 + tZ[1]*t**2 + tZ[2]*t + tZ[3]
+        def fz_dt(t): 
+            return 3*tZ[0]*t**2 + 2*tZ[1]*t + tZ[2]
         
         # Integrate the square root of the sum of dX^2, dY^2, dZ^2 
         #   with respect to t from t = i to t = i + 1
-        length = integrate.quad(lambda t: np.sqrt(derivative(fx,t)**2 + 
-                                derivative(fy,t)**2 + derivative(fz,t)**2), 
-                                tvals[i], tvals[i + 1])
+        length = integrate.quadrature(
+                lambda t: np.sqrt(fx_dt(t)**2 + fy_dt(t)**2 + fz_dt(t)**2), 
+                tVals[i], tVals[i + 1], maxiter = 10000)
         
         length = length[0]
 
@@ -409,12 +415,14 @@ def cubicSplineCircleCollisions(csx, csy, tVals, circle):
 def cubicSplinePolygonCollisions(csx, csy, tVals, poly):
     # Helper Method:
     #   Returns True if given point is on line and false otherwise
-    # Enpoints are considered to be on the line
-    # segment is of the form: ((x1, x2), (y1, y2))
-    # pt is of the form (x, y)
+    #   Endpoints are considered to be on the line
+    #   segment is of the form: ((x1, x2), (y1, y2))
+    #   pt is of the form (x, y)
     def isPtOnLine(segment, pt):
         # Define a machine precision value for floating point comparisons
-        epsilon = sys.float_info.epsilon
+        # Theoretically: sys.float_info.epsilon
+        # In reality there are tolerance stack ups
+        epsilon = 1 / 2**16
         
         # Returns True if the point is between the bounds of the segment and False
         #   otherwise
@@ -467,7 +475,7 @@ def cubicSplinePolygonCollisions(csx, csy, tVals, poly):
         if slope == float("inf"):
             # if the slope is infinite, but the x values aren't the same, it is not 
             #   on the line
-            if not (numpy.isclose(x1, x3, 0, epsilon)):
+            if not (np.isclose(x1, x3, 0, epsilon)):
                 return False
             
             # if the point is above or below the line segment, it is not on the line
@@ -484,15 +492,22 @@ def cubicSplinePolygonCollisions(csx, csy, tVals, poly):
 
         # With the given line segment in y = mx + b form, plug in the x of the point
         #  If the resulting y is the same as the y of the pt, the pt is on the line
+        #print ("(y3 - b): ", (y3 - b), "(slope * x3): ", (slope * x3))
+
         if (np.isclose((y3 - b), (slope * x3), 0, epsilon)):
+            #print ("Is on line")
+
             # Check that the point is within the bounds of the segment
             if isInBounds(pt):
+                #print ("Is within Bounds")
                 return True
 
             else:
+                #print ("Is NOT within Bounds")
                 return False
 
         else:
+            #print ("Is NOT on line")
             return False
 
     # Equation of a line:
@@ -522,11 +537,12 @@ def cubicSplinePolygonCollisions(csx, csy, tVals, poly):
             y = (poly[j-1][1], poly[j][1])
 
             # True only if the respective endpoint is strictly outside the polygon
-            isInitPtOutside = (isPtOnLine((x, y), (tX[0], tY[0])) or 
-                                polyObj.isInside(tX[0], tY[0]))
+            isInitPtOutside = not (polyObj.isInside(csx(tVals[0]), csy(tVals[0])) 
+                            or isPtOnLine((x, y), (csx(tVals[0]), csy(tVals[0]))))
 
-            isFinPtOutside = (isPtOnLine((x, y), (tX[-1], tY[-1])) or 
-                                polyObj.isInside(tX[-1], tY[-1]))
+            isFinPtOutside = not (isPtOnLine((x, y), 
+                                        (csx(tVals[-1]), csy(tVals[-1]))) 
+                            or polyObj.isInside(csx(tVals[-1]), csy(tVals[-1])))
 
             # Equation of a line
             # y = m*x + k
@@ -560,26 +576,25 @@ def cubicSplinePolygonCollisions(csx, csy, tVals, poly):
             # Find the roots of the intersection equation
             roots = np.roots(coeff)
 
-            print (i, " -th cubic spline: ")
-            print ("Line segment: x: ", x, "\ty: ", y)
-
-            print (roots)
-
-            input(" ")
-
             # Weed out the garbage points
             for root in roots:
                 # Doesn't count if it is an imaginary root
                 if not np.isreal(root):
                     continue
 
-                # The root must be between the start and end of this segment
+                # The root must be between the start and end of this spline
                 if (root >= 0 and root <= (tVals[i+1] - tVals[i])):
-                    intersections.append(root.real + tVals[i])
+                    tPos = root.real + tVals[i]
 
-            # The end pts count as intersection points if they are inside the poly
+                    loc = (csx(tPos).tolist(), csy(tPos).tolist())
+
+                    # The root must be within line segment of the polygon
+                    if (isPtOnLine((x, y), loc)):
+                        intersections.append(root.real + tVals[i])
+
+            # The end pts count as intersection points if they are outside the poly
             #   and we are analysing that particular segment
-            if ((i == 0) and not isInitPtOutside):
+            if ((i == 0) and isInitPtOutside):
                 # This avoids the edge case where the endpoint is on the poly
                 if (tVals[0] not in intersections):
                     intersections.append(tVals[0])
@@ -592,8 +607,16 @@ def cubicSplinePolygonCollisions(csx, csy, tVals, poly):
             # Sort the intersection points to make manipulations easier
             intersections.sort()
 
-            print (intersections)
+            # From preliminary testing, previous to this line everything seems ok
+            # Edge cases to test:
+            #   Waypoint on the line
+            #   polygon that completely swallows cubic spline
+            #   polygon that intersects the same spline twice
 
+            # Past this line is to find the pointOfInterest associated with each
+            #   pair of intersection points
+            # Nothing has been tested yet
+            
             if (len(intersections) > 0):
                 # Only set critPts to the empty list if the points inside are no 
                 #   longer needed
@@ -626,18 +649,30 @@ def cubicSplinePolygonCollisions(csx, csy, tVals, poly):
 
                 # Critical Points where dist is at a maximum or minimum:
                 #   2 * dist * d(dist)/dt = 
-                #      [m * (3*A*t^2 + 2*B*t + C) - (3*t^2 + 2*b*t + c)] / [m^2 + 1]
+                #       2 * [m * (3*A*t^2 + 2*B*t + C) - (3*t^2 + 2*b*t + c)] * 
+                #       [(m * (At^3 + Bt^2 + Ct + D) - (at^3 + bt^2 + ct + d) + k] * 
+                #       1 / [m^2 + 1]
 
                 #   Solve for when d(dist)/dt = 0:
                 #   2, dist, and [m^2 +1] always non-0 between intersection interval
                 #       0 = [m * (3*A*t^2 + 2*B*t + C) - (3*t^2 + 2*b*t + c)]
+                #       or
+                #       0 = (m * (At^3 + Bt^2 + Ct + D) - (at^3 + bt^2 + ct + d) + k
+                #   The second term is just the intersection points, which are 
+                #       garaunteed to be local minima (dist = 0)
                 
                 # Algebraic Manipulation:
                 #       0 = (3*m*A - 3*a) * t^2 + (2*m*B - 2*b)* t + (m*C - c)
 
-                coeff = [3*m*tX[0] - 3*tY[0],
-                        2*m*tX[1] - 2*tY[1],
-                        m*tX[2] - tY[2]]
+                if ((x[0] - x[1]) == 0):
+                    coeff = [3*tX[0],
+                            2*tX[1],
+                            tX[2]]
+
+                else:
+                    coeff = [3*m*tX[0] - 3*tY[0],
+                            2*m*tX[1] - 2*tY[1],
+                            m*tX[2] - tY[2]]
 
                 # Find the roots of the critical points equation
                 roots = np.roots(coeff)
@@ -652,18 +687,27 @@ def cubicSplinePolygonCollisions(csx, csy, tVals, poly):
                     if (root >= 0 and root <= (tVals[i+1] - tVals[i])):
                         critPts.append(root.real + tVals[i])
 
-                critPts.append(tVals[i])
-                critPts.append(tVals[i+1])
+                isOutside = (isPtOnLine((x, y), (tVals[i], tVals[i])) or 
+                                    polyObj.isInside(tVals[i], tVals[i]))
+
+                if isOutside:
+                    critPts.append(tVals[i])
+
+                isOutside = (isPtOnLine((x, y), (tVals[i+1], tVals[i+1])) or 
+                                    polyObj.isInside(tVals[i+1], tVals[i+1]))
+
+                if isOutside:
+                    critPts.append(tVals[i+1])
 
                 # Sort the crit points to manipulations things easier
                 critPts.sort()
 
                 # Boolean for if the next knot is strictly outside the polygon
-                isNextPtOutside = (isPtOnLine((x, y), (tVals[i+1], tVals[i+1])) or 
+                isNextKnotOutside = (isPtOnLine((x, y), (tVals[i+1], tVals[i+1])) or 
                                     polyObj.isInside(tVals[i+1], tVals[i+1]))
 
                 # If next knot is outside the polygon, don't reset the crit points
-                if (isNextPtOutside):
+                if (isNextKnotOutside):
                     resetCritPts = False
 
                     # Unless this is the last segment, continue to the next segment
@@ -672,7 +716,7 @@ def cubicSplinePolygonCollisions(csx, csy, tVals, poly):
 
                 # While intersection points are still in the queue, process them
                 while (len(intersections) > 1):
-                    dist = np.inf
+                    dist = -np.inf
                     closestPt = -1
 
                     # Note: only possible this easisly because critPts and 
@@ -683,14 +727,14 @@ def cubicSplinePolygonCollisions(csx, csy, tVals, poly):
                     for crit in critPts:
                         # If this critical point is less than the first intersection 
                         #   point, continue to the next one
-                        if (crit < intersections[0]):
+                        if (crit <= intersections[0]):
                             continue
 
                         # If this critical point is greater than the second 
                         #   intersection point, all future ones will also be 
                         #   greater, so the closest point between the intersection 
                         #   points has already been found
-                        if  (crit > intersections[1]):
+                        if  (crit >= intersections[1]):
                             break
 
                         # Distance from point (x0, y0) to line:
@@ -730,7 +774,7 @@ def cubicSplinePolygonCollisions(csx, csy, tVals, poly):
 #----------------------------------------------------------------------------------#
 
 # csx and csy are the parametric cubic splines with knots at the points in t
-# collisions is a list of collision objects
+# collisions is a list of collision objects (both circle and polygon)
 # Collision object is of the form (intersectionPts, ptOfInterest, circle)
 #   or (intersectionPts, ptOfInterest, line)
 
@@ -749,11 +793,17 @@ def main():
     # Initialize 'given' waypoints
     wpxInit = [600, 250, 100, 1000, 1050, 800, 750]
     wpyInit = [500, 600, 375, 390, 650, 650, 200]
-    plt.plot(wpxInit, wpyInit, 'x', label ='data', color = (0,0,0,1))
+    wpzInit = [100, 100, 100, 100, 100, 100, 100]
+
+    plt.plot(wpxInit, wpyInit, 'x', label = 'data', color = (0,0,0,1))
 
     # Makes parameter spacing to be constant
     n = len(wpxInit)
     t = np.arange(n)
+
+    t = optimizeParameterSpacing(wpxInit, wpyInit, t, arcLength)[0]
+
+    print (t)
 
     csx = CubicSpline(t, wpxInit)
     csy = CubicSpline(t, wpyInit)
@@ -763,7 +813,7 @@ def main():
     tSpace = np.arange(t[0], t[n-1] + s, s)
     plt.plot(csx(tSpace), csy(tSpace))
 
-    poly = [(250, 500), (900, 400), (800, 600), (200, 600)]
+    poly = [(250, 700), (0, 300), (1100, 100), (1100, 700)]
 
     xVals = list()
     yVals = list()
@@ -778,8 +828,33 @@ def main():
     xVals.append(x)
     yVals.append(y)
     plt.plot(xVals, yVals)
+
+    plt.show(block = False)
+
+    int1 = [0.21605059241917213, 5.62529326517927, 5.2047948727357545]
+    #plt.plot(csx(int1), csy(int1), 'o', color = 'g')
+
+    collisions = cubicSplinePolygonCollisions(csx, csy, t, poly)
+
+    print ("collisions: ",     collisions)
+
+    intersectionPts = []
+    ptsOfInterest = []
+
+    for collision in collisions:
+        intersections, ptOfInterest, cicle = collision
+        
+        intersectionPts.append(intersections[0])
+        intersectionPts.append(intersections[1])
+        
+        ptsOfInterest.append(ptOfInterest)
+
+    plt.plot(csx(intersectionPts), csy(intersectionPts), 'o', color = 'g')
+    plt.plot(csx(ptsOfInterest), csy(ptsOfInterest), 'o', color = 'y')
+
+
     plt.show(block=False)
-    print (cubicSplinePolygonCollisions(csx, csy, t, poly))
+
 
 
     """
@@ -912,8 +987,10 @@ Done    2) Randomly generate max 30 obstacles of radii from
 Path Generation
 Done    1) Spline from position to goal
 Done    2) Find points that intersect with circles
-Half    3) Fix that
-        4) Find regions that have high curvature
+        3) Fix that
+        4) Optimize for length/energy
+Done        4a) Optimizer function
+            4b) Evaluation Function
         5) Fix that
 """
 
