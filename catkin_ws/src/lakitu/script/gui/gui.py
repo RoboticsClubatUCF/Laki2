@@ -28,14 +28,15 @@ pixel_height = None
 pixel_width = None
 
 # containers for all the gui objects that get added
-search_grid_waypoints_circles = []
+search_grid_circles = []
 search_grid_lines = []
 flyzone_circles = []
 flyzone_lines = []
 mission_waypoints_circles = []
 mission_waypoints_lines = []
-emergent_LKS_circle = None
-odlcPosition_circle = None
+emergent_LKS_circle = -1
+odlcPosition_circle = -1
+airDrop_circle = -1
 
 
 
@@ -331,6 +332,8 @@ def getGpsImage(upperLeftCoords, lowerRightCoords):
 # makes a circle in the Tkinter canvas around a point (centroid) with a given radius
 # note: centroid is a tuple of gps coordinates: (latitude, longitude)
 def makeCircle(centroid, radius, color):
+	if(radius == 0):
+		radius = 20
 	lat = gpsToPixel(centroid[0], "lat")
 	lon = gpsToPixel(centroid[1], "lon")
 
@@ -351,6 +354,7 @@ def clickCallback_noCommand(event):
 
 def clickCallback_addFlyzoneWaypoints(event):
 	global Server
+	global flyzone_lines
 	
 	pixel = (event.y, event.x)
 	print "adding flyzone waypoint"
@@ -360,11 +364,14 @@ def clickCallback_addFlyzoneWaypoints(event):
 	waypoints = Server.fly_zones
 	Server.add_flyzone_waypoint((lat,lon))
 	if(len(Server.fly_zones) >=2):
+		if(len(flyzone_lines) > 0):
+			canvas.delete(flyzone_lines.pop())
 		flyzone_lines.append(createLine((lat, lon), (waypoints[len(waypoints)-2].latitude, waypoints[len(waypoints)-2].longitude), "red"))
-
+		flyzone_lines.append(createLine((lat, lon), (waypoints[0].latitude, waypoints[0].longitude), "red"))
 
 # TODO: MAKE THIS WORK
 def clickCallback_addSearchGridWaypoints(event):
+	global search_grid_lines
 	if event != None:
 		pixel = (event.y, event.x)
 		print "adding search grid waypoint"
@@ -373,47 +380,11 @@ def clickCallback_addSearchGridWaypoints(event):
 
 		waypoints = Server.search_grid_points
 		Server.add_searchGridWaypoint((lat, lon))
-		flyzone_lines.append(createLine((lat, lon), (waypoints[len(waypoints)-1].latitude, waypoints[len(waypoints)-1].longitude), "green"))
-
-def clickCallback_changeEmergent(event):
-	global emergent_LKS_circle
-	global canvas
-	if event != None and emergent_LKS_circle != None:
-		pixel = (event.y, event.x)
-		print "changing emergent object"
-		lon = pixelToGps(pixel, "x")
-		lat = pixelToGps(pixel, "y")
-
-		emergent = Server.emergent_last_known_pos
-		Server.changeEmergent((lat,lon))
-		canvas.remove(emergent_LKS_Circle)
-		emergent_LKS_Circle = makeCircle()
-
-def clickCallback_changeOdlcPosition(event):
-	global odlcPosition_circle
-	if event != None and odlcPosition_circle != None:
-		pixel = (event.y, event.x)
-		print "changing emergent object"
-		lon = pixelToGps(pixel, "x")
-		lat = pixelToGps(pixel, "y")
-
-		print "changing odlc"
-		Server.changeOdlcPosition((lat,lon))
-		canvas.remove(odlcPosition_circle)
-		odlcPosition_circle = makeCircle((lat,lon), 20, "purple")
-
-def clickCallback_changeAirdropPosition(event):
-	global airDrop_circle
-	if odlcPosition_circle != None:
-		pixel = (event.y, event.x)
-		print "changing emergent object"
-		lon = pixelToGps(pixel, "x")
-		lat = pixelToGps(pixel, "y")
-
-		print "changing odlc"
-		Server.change_air_drop_pos((lat,lon))
-		canvas.remove(airDrop_circle)
-		airDrop_circle = makeCircle((lat,lon), 20, "orange")
+		if(len(Server.search_grid_points) >= 2):
+			if(len(search_grid_lines) > 0):
+				canvas.delete(search_grid_lines.pop())
+		search_grid_lines.append(createLine((lat, lon), (waypoints[len(waypoints)-2].latitude, waypoints[len(waypoints)-2].longitude), "orange"))
+		search_grid_lines.append(createLine((lat, lon), (waypoints[0].latitude, waypoints[0].longitude), "orange"))
 
 def clickCallback_addMissionWaypoints(event):
 	global mission_waypoints_circles
@@ -426,9 +397,54 @@ def clickCallback_addMissionWaypoints(event):
 
 	waypoints = Server.mission_waypoints
 	Server.add_mission_waypoint((lat, lon), None)
-	print Server.mission_waypoints
 	if(len(Server.mission_waypoints) >=2):
+		if(len(mission_waypoints_lines) > 0):
+			canvas.delete(mission_waypoints_lines.pop())
+
 		mission_waypoints_lines.append(createLine((lat, lon), (waypoints[len(waypoints)-2].latitude, waypoints[len(waypoints)-2].longitude), "blue"))
+		mission_waypoints_lines.append(createLine((lat, lon), (waypoints[0].latitude, waypoints[0].longitude), "blue"))
+
+def clickCallback_changeEmergent(event):
+	global emergent_LKS_circle
+	global canvas
+	if event != None:
+		pixel = (event.y, event.x)
+		print "changing emergent object"
+		lon = pixelToGps(pixel, "x")
+		lat = pixelToGps(pixel, "y")
+
+		emergent = Server.emergent_last_known_pos
+		Server.changeEmergent((lat,lon))
+		if(emergent_LKS_circle != -1):
+			canvas.delete(emergent_LKS_circle)
+		emergent_LKS_circle = makeCircle((lat, lon), 0, "purple")
+
+def clickCallback_changeOdlcPosition(event):
+	global odlcPosition_circle
+	if event != None:
+		pixel = (event.y, event.x)
+		lon = pixelToGps(pixel, "x")
+		lat = pixelToGps(pixel, "y")
+
+		print "changing odlc"
+		Server.changeOdlcPosition((lat,lon))
+		if(odlcPosition_circle != -1):
+			canvas.delete(odlcPosition_circle)
+		odlcPosition_circle = makeCircle((lat,lon), 20, "white")
+
+def clickCallback_changeAirdropPosition(event):
+	global airDrop_circle
+	if odlcPosition_circle != None:
+		pixel = (event.y, event.x)
+		print "changing emergent object"
+		lon = pixelToGps(pixel, "x")
+		lat = pixelToGps(pixel, "y")
+
+		print "changing odlc"
+		Server.change_air_drop_pos((lat,lon))
+		canvas.delete(airDrop_circle)
+		airDrop_circle = makeCircle((lat,lon), 20, "orange")
+
 
 def clearMissionWaypoints():
 	global clickListener
@@ -480,7 +496,7 @@ def clearSearchGridWaypoints():
 	global canvas
 
 	for i in search_grid_lines:
-		canvas.remove(i)
+		canvas.delete(i)
 
 	search_grid_waypoints = []
 	Server.clear_searchGrid()
@@ -513,13 +529,36 @@ def addMissionWaypoints():
 
 	print "add mission waypoints"
 	clickListener = clickCallback_addMissionWaypoints
-	print Server.mission_waypoints
 
 def confirmWaypointSelection():
 	global clickListener
 	clickListener = clickCallback_noCommand
 	waypoints = Server.mission_waypoints
 	createLine((waypoints[0].latitude, waypoints[0].longitude), (waypoints[len(waypoints)-1].latitude, waypoints[len(waypoints)-1].longitude), "red")
+
+def deleteAirDropPosition():
+	global clickListener
+	global airDrop_circle
+	clickListener = clickCallback_noCommand
+	Server.deleteAirDropPosition()
+	canvas.delete(airDrop_circle)
+	airDrop_circle = -1
+
+def deleteOdlcPosition():
+	global clickListener
+	global odlcPosition_circle
+	clickListener = clickCallback_noCommand
+	Server.deleteOdlcPosition()
+	canvas.delete(odlcPosition_circle)
+	odlcPosition_circle = -1
+
+def deleteEmergent():
+	global clickListener
+	global emergent_LKS_circle
+	clickListener = clickCallback_noCommand
+	Server.deleteEmergent()
+	canvas.delete(emergent_LKS_circle)
+	emergent_LKS_circle = -1
 
 clickListener = clickCallback_noCommand
 
@@ -539,6 +578,8 @@ def main():
 	global flyzone_lines 
 	global mission_waypoints_circles
 	global mission_waypoints_lines
+	global emergent_LKS_Circle
+
 
 	# initialize ros nodes
 	# init_ros() 
@@ -611,11 +652,20 @@ def main():
 	b_changeAir_drop_pos = Button(text="Change Air Drop Waypoint", command=changeAirDropPosition)
 	b_changeAir_drop_pos.grid(row=8, column=11, sticky=S)
 
+	b_deleteAir_drop_pos = Button(text="Delete Air Drop Waypoint", command=deleteAirDropPosition)
+	b_deleteAir_drop_pos.grid(row=8, column=12, sticky=S)
+
 	b_changeOff_axis_odlc_pos = Button(text="Change odlc position", command=changeOdlcPosition)
 	b_changeOff_axis_odlc_pos.grid(row=7,column=11, sticky=S)
 
+	b_deleteOff_axis_odlc_pos = Button(text="Delete odlc position", command=deleteOdlcPosition)
+	b_deleteOff_axis_odlc_pos.grid(row=7,column=12, sticky=S)
+
 	b_changeEmergent_last_known_pos = Button(text="Change emergent LKP", command=changeEmergent)
 	b_changeEmergent_last_known_pos.grid(row=6, column=11, sticky=S)
+
+	b_deleteEmergent_last_known_pos = Button(text="Delete emergent LKP", command=deleteEmergent)
+	b_deleteEmergent_last_known_pos.grid(row=6, column=12, sticky=S)
 
 	b_addSearch_grid_points = Button(text="Add Search Grid Waypoints", command=addSearchGridWaypoints)
 	b_addSearch_grid_points.grid(row=5, column=11, sticky=S)
@@ -656,15 +706,6 @@ def main():
 
 	# list of waypoints outlc
 	flyzone_waypoints = missions[0].fly_zones[0].boundary_pts
-	
-	print corners
-	lat = gpsToPixel(corners[3][0], "lat")
-	lon = gpsToPixel(corners[3][1], "lon")
-
-	print "lat = " + str(lat)
-	print "lon = " + str(lon)
-
-	#makeCircle((lat, lon), 50)
 
 	# Draw all the flyzone waypoints that have been given by the server
 	for i in range(0, len(flyzone_waypoints)):
@@ -676,8 +717,9 @@ def main():
 		#makeCircle((pix_lat, pix_lon), 20)
 		
 		# make a red circle at every flyzone waypoint
-		flyzone_circles.append(makeCircle((lat, lon), 20, 'red'))
+		# flyzone_circles.append(makeCircle((lat, lon), 20, 'red'))
 
+		# draw lines from waypoint to waypoint, connecting the last waypoint to the first one
 		if(i != len(flyzone_waypoints)-1):
 			flyzone_lines.append(createLine((lat, lon), (flyzone_waypoints[i+1].latitude, flyzone_waypoints[i+1].longitude), "red"))
 		else:
@@ -686,19 +728,41 @@ def main():
 
 	search_grid_waypoints = missions[0].search_grid_points
 	
-	# Draw green circles marking the search grid waypoints
-	# for i in range(0, len(search_grid_waypoints)):
-	# 	search_grid_waypoints_circles.append(makeCircle((search_grid_waypoints[i].latitude, search_grid_waypoints[i].longitude),20, "green"))
-		# search_grid_waypoints_lines.append(createLine((mission_waypoints[i].latitude, mission_waypoints[i].longitude), "blue"))
+	# Draw orange circles marking the search grid waypoints
+	for i in range(0, len(search_grid_waypoints)):
+		lat = flyzone_waypoints[i].latitude
+		lon = flyzone_waypoints[i].longitude
+
+		pix_lat = gpsToPixel(lat, "lat")
+		pix_lon = gpsToPixel(lon, "lon")
+		# make a circle at given waypoint
+		# search_grid_circles.append(makeCircle((search_grid_waypoints[i].latitude, search_grid_waypoints[i].longitude),20, "orange"))
+
+		# draw lines from waypoint to waypoint, connecting the last waypoint to the first one
+		if(len(search_grid_waypoints) != 0):
+			if(i != len(search_grid_waypoints)-1):
+				search_grid_lines.append(createLine((lat,lon), (search_grid_waypoints[i+1].latitude, search_grid_waypoints[i+1].longitude), "orange"))
+			else:
+				search_grid_lines.append(createLine((lat, lon), (search_grid_waypoints[0].latitude, search_grid_waypoints[0].longitude), "orange"))
 
 	mission_waypoints = missions[0].mission_waypoints
 	
-	# Draw blue circles marking the mission waypoints
+	# Draw blue circles marking the search grid waypoints
 	for i in range(0, len(mission_waypoints)):
-		mission_waypoints_circles.append(makeCircle((mission_waypoints[i].latitude, mission_waypoints[i].longitude),20, "blue"))
-		# mission_waypoints_lines.append(createLine((mission_waypoints[i].latitude, mission_waypoints[i].longitude), "blue"))
+		lat = mission_waypoints[i].latitude
+		lon = mission_waypoints[i].longitude
 
+		pix_lat = gpsToPixel(lat, "lat")
+		pix_lon = gpsToPixel(lon, "lon")
+		# make a circle at given waypoint
+		# search_grid_circles.append(makeCircle((mission_waypoints[i].latitude, mission_waypoints[i].longitude),20, "blue"))
 
+		if(len(mission_waypoints) != 0):
+			# draw lines from waypoint to waypoint, connecting the last waypoint to the first one
+			if(i != len(mission_waypoints)-1):
+				search_grid_lines.append(createLine((lat,lon), (mission_waypoints[i+1].latitude, mission_waypoints[i+1].longitude), "orange"))
+			else:
+				search_grid_lines.append(createLine((lat, lon), (mission_waypoints[0].latitude, mission_waypoints[0].longitude), "orange"))
 
 	update() # update the gui with new info	
 	
