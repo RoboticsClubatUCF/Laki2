@@ -1,7 +1,0 @@
-READ ME
-
-Issues Fixed:
-1) Several functions had unused variables
-2) In speedCalculator, climbing speed did not account for drag
-3) In batteryCapacityCalculator, initial guess for maxBatteryCapacity was reduced to 150000
-4) In speedCalculator, initial guess for climbSpeed was set to the propeller exit velocity

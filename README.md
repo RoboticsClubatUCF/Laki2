@@ -1,1 +1,0 @@
-# RUCF's SUAS entry
