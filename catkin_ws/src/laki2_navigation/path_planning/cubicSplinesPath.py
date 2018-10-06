@@ -779,16 +779,37 @@ def cubicSplinePolygonCollisions(csx, csy, tVals, poly):
 # Collision object is of the form (intersectionPts, ptOfInterest, circle)
 #   or (intersectionPts, ptOfInterest, line)
 
+# TO DO: 
+#   Modify collision finding function to operate on a given range, not the 
+#       whole spline at once
+#   Fix the spline segment by segment starting from the beginning
+#   Feels like a polygon intersection can be fixed with one intermediate waypoint
+#   Fix the poly collisions first, put an intermediate waypoint at the midpoint of
+#       the line connecting the two actual waypoints. Shift it around a little to 
+#       avoid intersecting the circle obstacles. 
+#       (possibly generte points off line connecting actual waypoints, possibly 
+#       randomly generate points farther and farther from the line until one an 
+#       intermediate waypoint works well) 
+#       Make sure the entirety of the current spline stays within the boundaries
+#   To fix the circle obstacles, may need one waypoint per circle collision. Try
+#       putting the waypoint on both sides of the circle to see whether shifting cw
+#       or ccw is better
+
 def fixIntersections(wpx, wpy, tVals, collisions):
     csx = CubicSpline(tVals, wpx)
     csy = CubicSpline(tVals, wpy)
 
+    wpyNew = copy.copy(wpy)
+    wpxNew = copy.copy(wpx)
+    t = copy.copy(tVals)
+
+
     for collision in collisions:
-        ptOfInterest = (csx(collision[1]), csy(collision[1]))
+        #ptOfInterest = (csx(collision[1]), csy(collision[1]))
         
         # index is the index in which to insert the new point to wpx and wpy
-        for index in range(len(tVals)):
-            if (collision[1] < tVals[index]):
+        for index in range(len(t)):
+            if (collision[1] < t[index]):
                 break
 
         # It is a polygon collision
@@ -809,8 +830,7 @@ def fixIntersections(wpx, wpy, tVals, collisions):
 
             k = wpy[index - 1] - perpSlope * wpx[index - 1]
 
-            newPt = copy.copy(ptOfInterest)
-
+            #newPt = copy.copy(ptOfInterest)
 
             # This just plots what the new spline looks like with a new 
             #   waypoint inserted
@@ -819,19 +839,19 @@ def fixIntersections(wpx, wpy, tVals, collisions):
             #   look good on the line between the waypoints sandwiching the intersection
             #   and not much to do with the actual ptOfInterest
 
-            for i in range(20):
+            # Need to evaluate if this half way point is inside the polygon, if
+            #   outside it could be problematic
+
+            for i in range(1):
                 plt.plot(collision[2][0], collision[2][1])
 
-                t = copy.copy(tVals.tolist())
-                t.insert(index, collision[1])
+                t.insert(index, (t[index - 1] + t[index])/2)
                 
-                wpxNew = copy.copy(wpx)
                 #wpxNew.insert(index, ptOfInterest[0] + 10*i)
-                wpxNew.insert(index, wpx[index - 1] + 5*i)
+                wpxNew.insert(index, (wpxNew[index - 1] + wpxNew[index]) / 2)
 
-                wpyNew = copy.copy(wpy)
                 #wpyNew.insert(index, ptOfInterest[1] + 10*i*perpSlope)
-                wpyNew.insert(index, wpy[index - 1] + 5*i*perpSlope)
+                wpyNew.insert(index, (wpyNew[index - 1] + wpyNew[index]) / 2)
 
                 plt.plot(wpxNew, wpyNew, 'x', label = 'data', color = (0,0,0,1))
 
@@ -844,12 +864,7 @@ def fixIntersections(wpx, wpy, tVals, collisions):
                 plt.plot(csx(tSpace), csy(tSpace))
                 plt.show()
 
-
-
-
-
-
-    return None
+    return (wpxNew, wpyNew, t)
 
 #----------------------------------------------------------------------------------#
 
@@ -857,18 +872,17 @@ def main():
     # Initialize Figure
     fig, ax = plt.subplots()
     plt.gca().set_xlim([0,  1300])
-    plt.gca().set_ylim([0, 800])
+    plt.gca().set_ylim([0, 1300])
 
     # Initialize 'given' waypoints
-    wpxInit = [600, 250, 100, 1000, 1050, 800, 750]
-    wpyInit = [500, 600, 375, 390, 650, 650, 200]
+    wpxInit = [746.90, 1019.25, 390.52, 78.60, 204.4, 673.6]
+    wpyInit = [1108.4, 1024.40, 155.47, 391.6, 612.7, 338.4]
     wpzInit = [100, 100, 100, 100, 100, 100, 100]
 
     plt.plot(wpxInit, wpyInit, 'x', label = 'data', color = (0,0,0,1))
 
     # Makes parameter spacing to be constant
-    n = len(wpxInit)
-    t = np.arange(n)
+    t = np.arange(len(wpxInit))
 
     #t = optimizeParameterSpacing(wpxInit, wpyInit, t, arcLength)[0]
 
@@ -879,15 +893,26 @@ def main():
 
     # Plot parametric cubic splines
     s = 0.01
-    tSpace = np.arange(t[0], t[n-1] + s, s)
-    #plt.plot(csx(tSpace), csy(tSpace))
+    tSpace = np.arange(t[0], t[len(t)-1] + s, s)
+    plt.plot(csx(tSpace), csy(tSpace))
 
-    poly = [(250, 700), (0, 300), (1150, 100), (1100, 750)]
+    # Comp Boundary converted to XY
+    poly = [(609.9915651830946, 644.454456932276),
+            (655.4769561099155, 1238.9138134970472),
+            (899.4365305847842, 1268.1819761471047),
+            (1240.810387266854, 1124.454562201312),
+            (976.1887502964521, 788.4094397923109),
+            (1029.310174576658, 466.5050901843899),
+            (1188.824911231627, 309.8511306983688),
+            (1002.0957697243854, 0.0036295812471155995),
+            (421.55939798675325, 28.420887104681732),
+            (0.03993415704199533, 366.0542881303085),
+            (175.83977103766549, 764.1079686968526),
+            (477.5319123645307, 629.0467535497892)]
 
     xVals = list()
     yVals = list()
             
-    """
     for pt in poly:
         x, y = pt
 
@@ -898,12 +923,8 @@ def main():
     xVals.append(x)
     yVals.append(y)
     plt.plot(xVals, yVals)
-    """
 
     collisions = cubicSplinePolygonCollisions(csx, csy, t, poly)
-
-    fixIntersections(wpxInit, wpyInit, t, collisions)
-
 
     print ("collisions: ",     collisions)
 
@@ -920,6 +941,43 @@ def main():
 
     plt.plot(csx(intersectionPts), csy(intersectionPts), 'o', color = 'g')
     plt.plot(csx(ptsOfInterest), csy(ptsOfInterest), 'o', color = 'y')
+
+    plt.show()
+    
+    wpxNew, wpyNew, t = fixIntersections(wpxInit, wpyInit, t.tolist(), collisions)
+
+    plt.plot(wpxNew, wpyNew, 'x', label = 'data', color = (0,0,0,1))
+
+    csx = CubicSpline(t, wpxNew)
+    csy = CubicSpline(t, wpyNew)
+
+    collisions = cubicSplinePolygonCollisions(csx, csy, t, poly)
+
+    intersectionPts = []
+    ptsOfInterest = []
+
+    for collision in collisions:
+        intersections, ptOfInterest, cicle = collision
+        
+        intersectionPts.append(intersections[0])
+        intersectionPts.append(intersections[1])
+        
+        ptsOfInterest.append(ptOfInterest)
+
+    plt.plot(csx(intersectionPts), csy(intersectionPts), 'o', color = 'g')
+    plt.plot(csx(ptsOfInterest), csy(ptsOfInterest), 'o', color = 'y')
+
+
+    s = 0.01
+    tSpace = np.arange(t[0], t[len(t)-1] + s, s)
+    plt.plot(csx(tSpace), csy(tSpace))
+
+    plt.plot(xVals, yVals)
+
+    plt.show()
+
+    wpxNew, wpyNew, t = fixIntersections(wpxNew, wpyNew, t, collisions)
+
 
     """
     # Starting Point will have some slope dependent on vehicle heading
