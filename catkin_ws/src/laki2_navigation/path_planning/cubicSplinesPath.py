@@ -138,24 +138,27 @@ def arcLength(csx, csy, csz, tVals):
 # Helper function for main. Returns a list of circle tuples
 # Each circle tuple is of the form ((h, k), r) where (h, k) is the center and r is
 #   the radius
+
+# TO DO: keep the circles within (or mostly within) the polygon
+
 def makeRandomCircles(numCircles, wpx, wpy):
     import random
 
     # Put given waypoints into a list of (x, y) points
     pts = []
-    for i in xrange(len(wpx)):
+    for i in range(len(wpx)):
         pt = (wpx[i], wpy[i])
         pts.append(pt)
 
     # Generate Random Obstacles
     count = 0
-    circles = []
+    circles = set()
 
     # Create n random, non-overlapping circles
     while (count <= numCircles):
         # Random center and radius
         h = random.uniform(0.0, 1300.0)
-        k = random.uniform(0.0, 800.0)
+        k = random.uniform(0.0, 1300.0)
         r = random.uniform(30*12*0.0254, 300*12*0.0254)
 
         # Don't keep the circle if is swallows a waypoint or is inside another 
@@ -179,7 +182,7 @@ def makeRandomCircles(numCircles, wpx, wpy):
             continue
 
         # Add circle to plot and list of circles
-        circles.append(((h, k), r))
+        circles.add(((h, k), r))
         count += 1
 
     return circles
@@ -194,6 +197,13 @@ def makeRandomCircles(numCircles, wpx, wpy):
 # circle is of the form [(h, k), r] where (h, k) is the center and r is the radius
 # returns a list of the values of t where the cubic intersects the circle
 
+# segments in a list of the spline segments to iterate through. Must be continuous
+#   Examples: 
+#       To iterate through the first 5 segments of cubic spline:
+#           segments = [0, 1, 2, 3, 4]
+#       To iterate through the 3rd and 4th segment of a cubic spline:
+#           segments = [2, 3]
+
 # Returns a list of collision tuples. 
 #   Each collision has the form (intersectionPts, ptOfInterest, circle)
 #   Where intersectionPts are the two pts that intersect the circle. Only values
@@ -201,7 +211,7 @@ def makeRandomCircles(numCircles, wpx, wpy):
 #   ptOfInterest is the point between a par of intersection points that is closest 
 #       the the center of the circle
 
-def cubicSplineCircleCollisions(csx, csy, tVals, circle):
+def cubicSplineCircleCollisions(csx, csy, tVals, circle, segments=None):
     # Equation of a circle:
     #   r^2 = (x - h)^2 + (y - k)^2
     # x is defined in terms of t by csx
@@ -220,8 +230,12 @@ def cubicSplineCircleCollisions(csx, csy, tVals, circle):
 
     resetCritPts = True
 
+    # If nothing for segments is given, iterate throught the entirety of the list
+    if (segments == None):
+        segments = range(len(tVals) - 1)
+
     # Loop through all segments of the given cubic spline
-    for i in xrange(len(tVals) - 1):
+    for i in segments:
         # tX is a list of the coefficients of the equation x = At^3 + Bt^2 + Ct + D
         # tY is a list of the coefficients of the equation y = at^3 + bt^2 + ct + d 
         tX = [csx.c[0][i], csx.c[1][i], csx.c[2][i], csx.c[3][i]]
@@ -403,6 +417,13 @@ def cubicSplineCircleCollisions(csx, csy, tVals, circle):
 # TO DO: Convert from poly being a list as an input to a polygon object
 # poly is a Polygon object where each pt represents a vertice of the comp boundary
 
+# segments in a list of the spline segments to iterate through. Must be continuous.
+#   Examples: 
+#       To iterate through the first 5 segments of cubic spline:
+#           segments = [0, 1, 2, 3, 4]
+#       To iterate through the 3rd and 4th segment of a cubic spline:
+#           segments = [2, 3]
+
 # Returns a list of collision tuples. 
 #   Each collision has the form (intersectionPts, ptOfInterest, polySeg)
 #   Where intersectionPts are the two pts that intersect the polygon. Only values
@@ -412,7 +433,7 @@ def cubicSplineCircleCollisions(csx, csy, tVals, circle):
 #   polySeg is the line segment of intersection.
 #       It is of the form ((x0, x1), (y0, y1))
 
-def cubicSplinePolygonCollisions(csx, csy, tVals, poly):
+def cubicSplinePolygonCollisions(csx, csy, tVals, poly, segments=None):
     # Helper Method:
     #   Returns True if given point is on line and false otherwise
     #   Endpoints are considered to be on the line
@@ -524,8 +545,11 @@ def cubicSplinePolygonCollisions(csx, csy, tVals, poly):
 
     resetCritPts = True
 
+    if (segments == None):
+        segments = range(len(tVals) - 1)
+
     # Loop through all segments of the given cubic spline
-    for i in range(len(tVals) - 1):
+    for i in segments:
         # tX is a list of the coefficients of the equation x = At^3 + Bt^2 + Ct + D
         # tY is a list of the coefficients of the equation y = at^3 + bt^2 + ct + d 
         tX = [csx.c[0][i], csx.c[1][i], csx.c[2][i], csx.c[3][i]]
@@ -775,9 +799,10 @@ def cubicSplinePolygonCollisions(csx, csy, tVals, poly):
 
 # wpx and wpy are the lists of waypoints
 # csx and csy are the parametric cubic splines with knots at the points in t
-# collisions is a list of collision objects (both circle and polygon)
-# Collision object is of the form (intersectionPts, ptOfInterest, circle)
-#   or (intersectionPts, ptOfInterest, line)
+
+# poly is a list of (x, y) vertice points of the outer polygon boundary
+# circles is set of circles. Circles are of the form ((h, k), r) where (h, k) is the 
+#   center and r is the radius
 
 # TO DO: 
 #   Modify collision finding function to operate on a given range, not the 
@@ -791,11 +816,11 @@ def cubicSplinePolygonCollisions(csx, csy, tVals, poly):
 #       randomly generate points farther and farther from the line until one an 
 #       intermediate waypoint works well) 
 #       Make sure the entirety of the current spline stays within the boundaries
-#   To fix the circle obstacles, may need one waypoint per circle collision. Try
-#       putting the waypoint on both sides of the circle to see whether shifting cw
-#       or ccw is better
+#   (In another function) To fix the circle obstacles, may need one waypoint per 
+#       circle collision. Try putting the waypoint on both sides of the circle to 
+#       see whether shifting cw or ccw is better
 
-def fixIntersections(wpx, wpy, tVals, collisions):
+def fixPolygonIntersections(wpx, wpy, tVals, poly):
     csx = CubicSpline(tVals, wpx)
     csy = CubicSpline(tVals, wpy)
 
@@ -803,66 +828,45 @@ def fixIntersections(wpx, wpy, tVals, collisions):
     wpxNew = copy.copy(wpx)
     t = copy.copy(tVals)
 
+    # Start with the first spline segment
+    i = 0
 
-    for collision in collisions:
-        #ptOfInterest = (csx(collision[1]), csy(collision[1]))
-        
-        # index is the index in which to insert the new point to wpx and wpy
-        for index in range(len(t)):
-            if (collision[1] < t[index]):
-                break
+    # TO DO: Probably want it to loop back around to check real quick that a 
+    #   previous spline doesn't get fucked up
+    # Going to iterate through all segments of the spline
+    while (i < (len(wpxNew) - 1)):
+        # Find collisions between the polygon and the current spline segment
+        collisions = cubicSplinePolygonCollisions(csx, csy, t, poly, [i])
 
-        # It is a polygon collision
-        if (len(collision[2][1]) > 1):
-            line = collision[2]
-            #slope = (line[1][0] - line[1][1]) / (line[0][0] - line[0][1])
+        # If there is a collision
+        if len(collisions): 
+            # Put the intermediate point at the point of interest
+            t.insert(i+1, collisions[0][1])
             
-            slope = (wpy[index] - wpy[index - 1]) / (wpx[index] - wpx[index - 1])
+            wpxNew.insert(i+1, (wpxNew[i] + wpxNew[i+1]) / 2)
+            wpyNew.insert(i+1, (wpyNew[i] + wpyNew[i+1]) / 2)
 
-            # Slope of the line with which to adjust the intermedite waypoint
-            #perpSlope = -1 / slope
+            csx = CubicSpline(t, wpxNew)
+            csy = CubicSpline(t, wpyNew)
 
-            perpSlope = slope
+            # TO DO: Need to check with circle obstacle intersections here
+            # Possibly fix them by replacing the intermediate pt like so:
+            #   wpxNew[i+1] = newPt
+            #   wpyNew[i+1] = newPt
+            # Where newPt is a point that causes the spline to not intersect the
+            #   polygon, and not intersect a circle obstacle (easy right. lol)
 
-            # Equation of a line:
-            #   y = mx + k
-            #k = ptOfInterest[1] - perpSlope * ptOfInterest[0]
+            # TO DO: will eventually need to remove the plotting
+            # Plot parametric cubic splines
+            plt.plot(wpxNew, wpyNew, 'x', label = 'data', color = (0,0,0,1))
 
-            k = wpy[index - 1] - perpSlope * wpx[index - 1]
+            s = 0.01
+            tSpace = np.arange(t[0], t[len(t)-1] + s, s)
+            plt.plot(csx(tSpace), csy(tSpace))
+            plt.show()
 
-            #newPt = copy.copy(ptOfInterest)
-
-            # This just plots what the new spline looks like with a new 
-            #   waypoint inserted
-            
-            # For polygon interesection, intermediate wapoint insertion seems to
-            #   look good on the line between the waypoints sandwiching the intersection
-            #   and not much to do with the actual ptOfInterest
-
-            # Need to evaluate if this half way point is inside the polygon, if
-            #   outside it could be problematic
-
-            for i in range(1):
-                plt.plot(collision[2][0], collision[2][1])
-
-                t.insert(index, (t[index - 1] + t[index])/2)
-                
-                #wpxNew.insert(index, ptOfInterest[0] + 10*i)
-                wpxNew.insert(index, (wpxNew[index - 1] + wpxNew[index]) / 2)
-
-                #wpyNew.insert(index, ptOfInterest[1] + 10*i*perpSlope)
-                wpyNew.insert(index, (wpyNew[index - 1] + wpyNew[index]) / 2)
-
-                plt.plot(wpxNew, wpyNew, 'x', label = 'data', color = (0,0,0,1))
-
-                csx = CubicSpline(t, wpxNew)
-                csy = CubicSpline(t, wpyNew)
-
-                # Plot parametric cubic splines
-                s = 0.01
-                tSpace = np.arange(t[0], t[len(t)-1] + s, s)
-                plt.plot(csx(tSpace), csy(tSpace))
-                plt.show()
+        # Move on to the next spline segment
+        i += 1
 
     return (wpxNew, wpyNew, t)
 
@@ -923,61 +927,37 @@ def main():
     xVals.append(x)
     yVals.append(y)
     plt.plot(xVals, yVals)
+    
+    circles = makeRandomCircles(30, wpxInit, wpyInit)
 
-    collisions = cubicSplinePolygonCollisions(csx, csy, t, poly)
-
-    print ("collisions: ",     collisions)
-
-    intersectionPts = []
-    ptsOfInterest = []
-
-    for collision in collisions:
-        intersections, ptOfInterest, cicle = collision
-        
-        intersectionPts.append(intersections[0])
-        intersectionPts.append(intersections[1])
-        
-        ptsOfInterest.append(ptOfInterest)
-
-    plt.plot(csx(intersectionPts), csy(intersectionPts), 'o', color = 'g')
-    plt.plot(csx(ptsOfInterest), csy(ptsOfInterest), 'o', color = 'y')
+    ax = plt.gca()
+    for circle in circles:
+        circle = Circle(circle[0], circle[1], facecolor='r')
+        ax.add_patch(circle)
 
     plt.show()
-    
-    wpxNew, wpyNew, t = fixIntersections(wpxInit, wpyInit, t.tolist(), collisions)
 
-    plt.plot(wpxNew, wpyNew, 'x', label = 'data', color = (0,0,0,1))
+
+    # Fix the intersections with the polygon
+    wpxNew, wpyNew, t = fixPolygonIntersections(wpxInit, wpyInit, t.tolist(), poly)
 
     csx = CubicSpline(t, wpxNew)
     csy = CubicSpline(t, wpyNew)
 
-    collisions = cubicSplinePolygonCollisions(csx, csy, t, poly)
+    ax = plt.gca()
+    for circle in circles:
+        circle = Circle(circle[0], circle[1], facecolor='r')
+        ax.add_patch(circle)
 
-    intersectionPts = []
-    ptsOfInterest = []
-
-    for collision in collisions:
-        intersections, ptOfInterest, cicle = collision
-        
-        intersectionPts.append(intersections[0])
-        intersectionPts.append(intersections[1])
-        
-        ptsOfInterest.append(ptOfInterest)
-
-    plt.plot(csx(intersectionPts), csy(intersectionPts), 'o', color = 'g')
-    plt.plot(csx(ptsOfInterest), csy(ptsOfInterest), 'o', color = 'y')
-
-
+    # Plot parametric cubic splines
     s = 0.01
     tSpace = np.arange(t[0], t[len(t)-1] + s, s)
     plt.plot(csx(tSpace), csy(tSpace))
 
+    plt.plot(wpxNew, wpyNew, 'x', label = 'data', color = (0,0,0,1))
     plt.plot(xVals, yVals)
 
     plt.show()
-
-    wpxNew, wpyNew, t = fixIntersections(wpxNew, wpyNew, t, collisions)
-
 
     """
     # Starting Point will have some slope dependent on vehicle heading
