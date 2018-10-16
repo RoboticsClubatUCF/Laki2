@@ -14,7 +14,7 @@ from matplotlib.pyplot import Circle
 from matplotlib.collections import PatchCollection
 
 # Don't import like this for normal scripts. This ins only for testing
-from cubicSplinePath import *
+from cubicSplinesPath import *
 
 def main():
     # Initialize Figure
