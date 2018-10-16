@@ -19,7 +19,7 @@ class MavHeartbeatThread(threading.Thread):
 
     def run(self):
         self.running = True
-        self.mavlink_connection = mavutil.mavlink_connection('0.0.0.0:14550', autoreconnect=True, baud=57600)
+        self.mavlink_connection = mavutil.mavlink_connection('127.0.0.1:5760', autoreconnect=True, baud=57600)
         self.mavlink_connection.wait_heartbeat()
         while self.running:
             self.mavlink_connection.mav.heartbeat_send(mavutil.mavlink.MAV_TYPE_GCS,

@@ -23,7 +23,8 @@
 		<arg name="respawn_mavros" default="$(arg respawn_mavros)" />
 	</include>
 
-	<node pkg="laki2_states" type="mav_datalink2.py" name='mav_data' />
+	<node pkg="laki2_states" type="mav_datalink.py" name='mav_data' />
+	<node pkg="laki2_states" type="ardu_main.py" name='ardu_sm' output='screen'/>
 
 
 </launch>
