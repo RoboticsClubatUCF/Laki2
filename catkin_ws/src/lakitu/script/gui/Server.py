@@ -1,10 +1,21 @@
 import interop
+import rospy
+from sensor_msgs.msg import NavSatFix
+
+# This class handles all of the information being received from the competition server
+# It also handles sending and receiving information from ROS
+# Received information:
+# GPS coordinates, velocity, current waypoint path
+# Sent information:
+# Mission waypoints, fly zone boundaries, air drop GPS position, emergent last known position (GPS), and search grid waypoints
 
 class Server:
 	
 	# client interacts with the interoperability system to get mission data
 	client = interop.Client("http://localhost:8000", "testuser", "testpass", 10, 10)
 	missions = client.get_missions()
+	obstacles = client.get_obstacles()
+
 	air_drop_pos = missions[0].air_drop_pos
 	home_pos = missions[0].home_pos
 	mission_waypoints = missions[0].mission_waypoints
@@ -14,6 +25,12 @@ class Server:
 	fly_zones = missions[0].fly_zones[0].boundary_pts
 
 
+	currentDroneGps = interop.Waypoint(0, -1, -1, 0)
+
+	print obstacles[0]
+
+	# The below methods handle altering the class variables 
+	# That relate to the information we are receiving from the competition server
 	def get_missions(this):
 		return Server.missions
 
@@ -69,5 +86,25 @@ class Server:
 		newWaypoint = interop.Waypoint(0, gpsWaypoint[0], gpsWaypoint[1], None)
 		Server.off_axis_odlc_pos = newWaypoint
 
+	def getObstacles(this):
+		return Server.obstacles
+
+	def addObstacle(this, gpsWaypoint, radius, height):
+		newObstacle = interop.StationaryObstacle(gpsWaypoint[0], gpsWaypoint[1], radius, height)
+
+	# The below methods handle interacting with ROS
+
+	def callback_CurrentDroneGpsLocation(this, data):
+		Server.currentDroneGps.latitude = data.latitude
+		Server.currentDroneGps.longitude = data.longitude
+		Server.currentDroneGps.altitude_msl = data.altitude
+
+	# Gets the current GPS position of the drone from ROS
+	def initializeROSNodes(this):
+		rospy.init_node("Server", anonymous=True)
+		rospy.Subscriber("/mavros/global_position/global", NavSatFix, this.callback_CurrentDroneGpsLocation)
+		# rospy.Subscriber("/mavros/local/_position/velocity", )
+	def getCurrentDroneGps(this):
+		return Server.currentDroneGps
 
 	

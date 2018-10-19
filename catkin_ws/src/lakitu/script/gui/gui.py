@@ -5,23 +5,28 @@ from nav_msgs.msg import Odometry
 # for getGpsImage:
 import Image, urllib, StringIO
 from math import log, exp, tan, atan, pi, ceil
-
+import interop
 from Server import Server # for interfacing with Server
 
 Server = Server()
-
+Server.initializeROSNodes()
 # variables updated by ROS (initialized here to ensure global access)
 rosGpsData = None
 latitude = None
 longitude = None
+altitude = None
 current_pos = None
 root = None
+
 
 circleList = []
 
 # global variables needed for gui objects
 label_gpsData = None
 label_imuData = None
+label_altitudeData = None
+obstacle_height_input = None
+obstacle_radius_input = None
 
 # relates to the image the gui displays of the GPS area
 pixel_height = None
@@ -37,6 +42,8 @@ mission_waypoints_lines = []
 emergent_LKS_circle = -1
 odlcPosition_circle = -1
 airDrop_circle = -1
+obstacles = []
+obstacles_circles = []
 
 
 
@@ -71,34 +78,42 @@ def init_ros():
 	
 # update the gui with new info
 def update():
-	#extract the information from ROS that we need (latitude and longitude)
-	# global latitude
-	# global longitude
-	
-	# if latitude is not None:
-	# 	gpsString = str(latitude) + ", " + str(longitude)
-	
-	# 	label_gpsData.config(text=gpsString)
-		#label_imuData.config(text=current_pos)
 	global canvas
-	canvas.bind("<Button-1>", clickListener)
-	
+	global label_altitudeData
+	global label_gpsData
+	currentDroneGps = Server.getCurrentDroneGps()
+
+	gpsString = str(currentDroneGps.latitude) + ", " + str(currentDroneGps.longitude)
+	altitudeString = str(currentDroneGps.altitude_msl)
+	# print altitudeString
+
+	if(label_gpsData != None and label_altitudeData != None):
+		label_gpsData.config(text=gpsString)
+		label_altitudeData.config(text=altitudeString)
+	# label_imuData.config(text=current_pos)
+
+
+	# change the click listener to what we have selected with the buttons
+	canvas.bind("<Button-1>", clickListener) 
+
 	root.after(100, update)
+
+
 
 # THIS METHOD IS A TEST OF UPDATING THE GUI, USE THIS TEMPLATE AS NEEDED
 # updates the label after a certain amount of time to counter 
-counter = 0
-def my_after(): 
-	global counter
-	counter = counter + 1	
-	print counter
-	new_text = counter 
+# counter = 0
+# def my_after(): 
+# 	global counter
+# 	counter = counter + 1	
+# 	print counter
+# 	new_text = counter 
 	
-	#change text of label
-	label_gpsData.config(text=new_text)
+# 	#change text of label
+# 	label_gpsData.config(text=new_text)
 	
-	# call again after 100 ms
-	root.after(100, my_after)
+# 	# call again after 100 ms
+# 	root.after(100, my_after)
 # you must call the method at least once to get it started, it will continue on its own afterwards
 #my_after()
 
@@ -237,7 +252,7 @@ def getCorners(stringReturn):
 def removeLastCircle():
 	global canvas
 	global circleList
-	print circleList
+	# print circleList
 	if(len(circleList) > 0):
 		canvas.delete(circleList[(len(circleList)-1)])
 		circleList.pop()
@@ -350,7 +365,12 @@ def makeCircle(centroid, radius, color):
 	return canvas.create_oval(TL[0], TL[1], BR[0], BR[1], fill=color)
 
 def clickCallback_noCommand(event):
-	print "No command"
+	pixel = (event.y, event.x)
+
+	lon = pixelToGps(pixel, "x")
+	lat = pixelToGps(pixel, "y")
+
+	print "No command (clicked at (lat: " + str(lat) + ", lon:" + str(lon) + "))"
 
 def clickCallback_addFlyzoneWaypoints(event):
 	global Server
@@ -445,6 +465,26 @@ def clickCallback_changeAirdropPosition(event):
 		canvas.delete(airDrop_circle)
 		airDrop_circle = makeCircle((lat,lon), 20, "orange")
 
+def clickCallback_addObstacle(event):
+	global obstacles_circles
+	global obstacle_height_input
+	global obstacle_radius_input
+
+	#TODO: convert radius from meters to pixels
+	# radius = gpsToPixel(float(obstacle_radius_input.get()), 'lat')
+	radius = 20
+	height = float(obstacle_height_input.get())
+	print radius
+
+	if odlcPosition_circle != None:
+		pixel = (event.y, event.x)
+		print "changing emergent object"
+		lon = pixelToGps(pixel, "x")
+		lat = pixelToGps(pixel, "y")
+
+		print "changing odlc"
+		Server.addObstacle((lat,lon), radius, height)
+		obstacles_circles.append(makeCircle((lat,lon), radius, "red"))
 
 def clearMissionWaypoints():
 	global clickListener
@@ -560,12 +600,17 @@ def deleteEmergent():
 	canvas.delete(emergent_LKS_circle)
 	emergent_LKS_circle = -1
 
+def addObstacle():
+	global clickListener
+	clickListener = clickCallback_addObstacle
+
 clickListener = clickCallback_noCommand
 
 def main():
 	global root
 	global label_gpsData
 	global label_imuData
+	global label_altitudeData
 	global latitude
 	global longitude
 	global pixel_height
@@ -579,7 +624,9 @@ def main():
 	global mission_waypoints_circles
 	global mission_waypoints_lines
 	global emergent_LKS_Circle
-
+	global obstacles
+	global obstacle_height_input
+	global obstacle_radius_input
 
 	# initialize ros nodes
 	# init_ros() 
@@ -587,6 +634,12 @@ def main():
 	#initialize a Tkinter object
 	root = Tk()
 	
+	obstacle_height_input = StringVar()
+	obstacle_radius_input = StringVar()
+
+	obstacle_height_input.set("New Obstacle Height")
+	obstacle_radius_input.set("New Obstacle Radius")
+
 	# create a frame and tell it which Tkinter object we are using
 	# frame = Frame(root, borderwidth=1000)
 	
@@ -620,80 +673,83 @@ def main():
 
 	im5.save("ANTIALIAS" + ext)
 
-	print "height = " + str(pixel_height)
-	print "width = " + str(pixel_width)
+	# print "height = " + str(pixel_height)
+	# print "width = " + str(pixel_width)
 
 	#display an image from file path
 	canvas = Canvas(root, width = pixel_width, height = pixel_height)
-	canvas.grid(row=0, column=0, sticky=W,rowspan=10, columnspan=10)
+	canvas.grid(row=0, column=0,rowspan=20, columnspan=10)
 	canvas.create_image(0,0, anchor = NW, image = img)
+
+	first_col = 11
+	second_col = 12
+	third_col = 13
+
+	rosRows = 4;
 
 	#Label experimenting
 	#label that provides info text
 	label_gpsName = Label(root, text="GPS coordinates = ")
-	label_gpsName.grid(row=0, column=11, sticky = N)
+	label_gpsName.grid(row=0, column=first_col)
 
 	#label that updates based on given gps data
 	label_gpsData = Label(root, text="NO GPS DATA")
-	label_gpsData.grid(row=0, column=12, sticky = N)
+	label_gpsData.grid(row=0, column=second_col)
 
+	label_altitudeName = Label(root, text="Altitude = ")
+	label_altitudeName.grid(row = 1, column = first_col)
 
+	label_altitudeData = Label(root, text = "NO GPS DATA")
+	label_altitudeData.grid(row = 1, column = second_col)
 
 	# put the icon to the left of the text label
-	b_addMissionWaypoints = Button(text="Add Mission Waypoints", command=addMissionWaypoints)
-	b_addMissionWaypoints.grid(row=9, column=11	, sticky=S)
+	b_addMissionWaypoints = Button(text="Add Mission Waypoints", command=addMissionWaypoints, width=20)
+	b_addMissionWaypoints.grid(row=rosRows+1, column=first_col)
 
-	b_clearMissionWaypoints = Button(text="Clear Mission Waypoints", command=clearMissionWaypoints)
-	b_clearMissionWaypoints.grid(row=9, column=12, sticky=S)
+	b_clearMissionWaypoints = Button(text="Clear Mission Waypoints", command=clearMissionWaypoints, width=20)
+	b_clearMissionWaypoints.grid(row=rosRows+1, column=second_col,)
 
-	b_confirmWaypointSelection = Button(text="Finish Adding Waypoints", command=confirmWaypointSelection)
-	b_confirmWaypointSelection.grid(row=4, column=12, sticky=S)
+	b_confirmWaypointSelection = Button(text="Finish Adding Waypoints", command=confirmWaypointSelection, width=45)
+	b_confirmWaypointSelection.grid(row=rosRows+2, column=first_col, columnspan = 2)
 
-	b_changeAir_drop_pos = Button(text="Change Air Drop Waypoint", command=changeAirDropPosition)
-	b_changeAir_drop_pos.grid(row=8, column=11, sticky=S)
+	b_changeAir_drop_pos = Button(text="Change Air Drop Waypoint", command=changeAirDropPosition, width=20)
+	b_changeAir_drop_pos.grid(row=rosRows+3, column=first_col)
 
-	b_deleteAir_drop_pos = Button(text="Delete Air Drop Waypoint", command=deleteAirDropPosition)
-	b_deleteAir_drop_pos.grid(row=8, column=12, sticky=S)
+	b_deleteAir_drop_pos = Button(text="Delete Air Drop Waypoint", command=deleteAirDropPosition, width=20)
+	b_deleteAir_drop_pos.grid(row=rosRows+3, column=second_col)
 
-	b_changeOff_axis_odlc_pos = Button(text="Change odlc position", command=changeOdlcPosition)
-	b_changeOff_axis_odlc_pos.grid(row=7,column=11, sticky=S)
+	b_changeOff_axis_odlc_pos = Button(text="Change odlc position", command=changeOdlcPosition, width=20)
+	b_changeOff_axis_odlc_pos.grid(row=rosRows+4,column=first_col)
 
-	b_deleteOff_axis_odlc_pos = Button(text="Delete odlc position", command=deleteOdlcPosition)
-	b_deleteOff_axis_odlc_pos.grid(row=7,column=12, sticky=S)
+	b_deleteOff_axis_odlc_pos = Button(text="Delete odlc position", command=deleteOdlcPosition, width=20)
+	b_deleteOff_axis_odlc_pos.grid(row=rosRows+4,column=second_col)
 
-	b_changeEmergent_last_known_pos = Button(text="Change emergent LKP", command=changeEmergent)
-	b_changeEmergent_last_known_pos.grid(row=6, column=11, sticky=S)
+	b_changeEmergent_last_known_pos = Button(text="Change emergent LKP", command=changeEmergent, width=20)
+	b_changeEmergent_last_known_pos.grid(row=rosRows+5, column=first_col)
 
-	b_deleteEmergent_last_known_pos = Button(text="Delete emergent LKP", command=deleteEmergent)
-	b_deleteEmergent_last_known_pos.grid(row=6, column=12, sticky=S)
+	b_deleteEmergent_last_known_pos = Button(text="Delete emergent LKP", command=deleteEmergent, width=20)
+	b_deleteEmergent_last_known_pos.grid(row=rosRows+5, column=second_col)
 
-	b_addSearch_grid_points = Button(text="Add Search Grid Waypoints", command=addSearchGridWaypoints)
-	b_addSearch_grid_points.grid(row=5, column=11, sticky=S)
+	b_addSearch_grid_points = Button(text="Add Search Grid Waypoints", command=addSearchGridWaypoints, width=20)
+	b_addSearch_grid_points.grid(row=rosRows+6, column=first_col)
 
-	b_clearSearch_grid_points = Button(text="Clear Search Grid Waypoints", command=clearSearchGridWaypoints)
-	b_clearSearch_grid_points.grid(row=5, column=12, sticky=S)
+	b_clearSearch_grid_points = Button(text="Clear Search Grid Waypoints", command=clearSearchGridWaypoints, width=20)
+	b_clearSearch_grid_points.grid(row=rosRows+6, column=second_col)
 
-	b_addFly_zones_Waypoints = Button(text="Add FlyZone Waypoints", command=addFlyzoneWaypoints)
-	b_addFly_zones_Waypoints.grid(row=4, column=11, sticky=S)
+	b_addFly_zones_Waypoints = Button(text="Add FlyZone Waypoints", command=addFlyzoneWaypoints, width=20)
+	b_addFly_zones_Waypoints.grid(row=rosRows+7, column=first_col)
 
-	b_clearFlyzone_Waypoints = Button(text="Clear FlyZone Waypoints", command=clearFlyzoneWaypoints)
-	b_clearFlyzone_Waypoints.grid(row=4, column = 12, sticky = S)
+	b_clearFlyzone_Waypoints = Button(text="Clear FlyZone Waypoints", command=clearFlyzoneWaypoints, width=20)
+	b_clearFlyzone_Waypoints.grid(row=rosRows+7, column = second_col)
 
+	b_addObstacle = Button(text="Add Obstacle", command=addObstacle, width=45)
+	b_addObstacle.grid(row=rosRows+9, column = first_col, columnspan = 2)
 
+	et_obstacleHeight = Entry(root, textvariable=obstacle_height_input, width=22)
+	et_obstacleHeight.grid(row=rosRows+8, column = first_col)
 
-	# global circleList
-	# b_removeCircle = Button(text="Remove Circle", command=removeLastCircle)
-	# b_removeCircle.grid(row=8, column=12, sticky=S)
-
-
-
-
-	''' label for imu data (temporarily removed until we know what data is useful'''
-	#label_imuName = Label(root, text="orientation = ")
-	#label_imuName.grid(row=1,column=0, sticky = W)
-
-	#label_imuData = Label(root, text="NO IMU DATA")
-	#label_imuData.grid(row=1, column=1)
+	et_obstacleRadius = Entry(root, textvariable=obstacle_radius_input, width=22)
+	et_obstacleRadius.grid(row=rosRows+8, column = second_col)
 	
 	corners = getCorners(0)
 
@@ -703,6 +759,8 @@ def main():
 	Ay = corners[2][0]
 
 	missions = Server.get_missions()
+
+	#TODO: generalize the following for loops:
 
 	# list of waypoints outlc
 	flyzone_waypoints = missions[0].fly_zones[0].boundary_pts
@@ -763,9 +821,23 @@ def main():
 				search_grid_lines.append(createLine((lat,lon), (mission_waypoints[i+1].latitude, mission_waypoints[i+1].longitude), "orange"))
 			else:
 				search_grid_lines.append(createLine((lat, lon), (mission_waypoints[0].latitude, mission_waypoints[0].longitude), "orange"))
+	
+	obstacles = Server.getObstacles()
+
+	# Draw blue circles marking the search grid waypoints
+	for i in range(0, len(obstacles[0])):
+		if( isinstance(obstacles[i][0], interop.StationaryObstacle)):
+			lat = obstacles[i][0].latitude
+			lon = obstacles[i][0].longitude
+			radius = obstacles[i][0].cylinder_radius
+
+			# make a circle at given waypoint
+			if(len(obstacles) != 0):
+				# draw lines from waypoint to waypoint, connecting the last waypoint to the first one
+				
+				obstacles_circles.append( makeCircle((lat, lon), radius, "red"))
 
 	update() # update the gui with new info	
-	
 	
 	# starts the gui
 	mainloop()
