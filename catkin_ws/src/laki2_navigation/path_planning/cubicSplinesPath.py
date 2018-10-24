@@ -14,187 +14,6 @@ from matplotlib.pyplot import Circle
 from matplotlib.collections import PatchCollection
 
 #----------------------------------------------------------------------------------#
-# Given 3 lists, a list for each of the x, and y coordinates of waypoints, as well
-#   as an init spacing for the parameter. Initial spacing must be stricly increasing
-# Lists need to be of the same length
-# Pass a costFunction that evaluates the cost of the spline
-
-# If successful, returns (t_opt, True) where t_opt is the optimal spacing
-# If unsuccessful, returns (t, False) where t is the original spacing
-def optimizeParameterSpacing(wpx, wpy, tVals, costFunc):
-    def evalSpacing(x, tVals):
-        # The first two parameters are fixed
-        # Any scalar multiple of the spacing results in the same spline
-        spacing = [tVals[0], tVals[1]]
-
-        # Add the other (n-2) terms to t
-        for param in x:
-            # x contains the difference between the current and previous index
-            # Exponential is used to ensure the value is strictly positive
-            # This ensures that t is strictly increasing
-            spacing.append(spacing[-1] + np.exp(param))
-
-        csx = CubicSpline(spacing, wpx)
-        csy = CubicSpline(spacing, wpy)
-
-        # TO DO: make this use the actual z spline
-        # Just for testing, keeps z at same altitude the whole time
-        wpz = np.array(len(wpx))
-        wpz.fill(200)
-        csz = CubicSpline(spacing, wpy)
-
-        # Return some cost of the spline
-        length = costFunc(csx, csy, csz, spacing)
-        print (length)
-        return length
-
-    #--------------------------------------------------------------------------#
-
-    x0 = []
-    for i in range(len(tVals)):
-        if (i == 0 or i == 1):
-            continue
-
-        # Difference between the current     
-        diff = tVals[i] - tVals[i-1]
-        x0.append(np.log(diff))
-
-    # x is now an array representing the natural log of the difference between 
-    #   non-fixed values of t
-    x0 = np.array(x0)
-
-    # To aquire the respective spacing, simply exponentiate an element of x and add 
-    #   it to the previous element in the spacing
-    # This allows for the elements of x to take on any real value while ensuring
-    #   that the respective spacing is strictly increasing
-    # TO DO: probably give some kind of jacobian to make this faster
-    opt_obj = minimize(evalSpacing, x0, tVals, method = 'Nelder-Mead', tol = 1e-8, 
-                    options = {'maxiter':5000})
-
-    # Determine if the optimization was successful (it should be in all cases)
-    if (opt_obj.success):
-        x_opt = opt_obj.x
-
-        # The first two parameters are fixed
-        # Any scalar multiple of the spacing results in the same spline
-        t_opt = [tVals[0], tVals[1]]
-
-        # Add the other (n-2) terms to t
-        for param in x_opt:
-            # x contains the difference between the current and previous index
-            # This ensures that t is monotomically increasing
-            t_opt.append(t_opt[-1] + np.exp(param))
-
-        return (t_opt, True)
-
-    # If unsucessful, deal with it. Life isn't fair
-    else:
-        return (tVals, False)
-
-#----------------------------------------------------------------------------------#
-
-# csx is the cubic spline of x as a function of t
-# csy is the cubic spline of y as a function of t
-# csz is the cubic spline of z as a function of t
-
-# tVals is the list of parametric points serving as the knots for the cubic spline
-
-def arcLength(csx, csy, csz, tVals):
-    totalLength = 0
-
-    # Loop thru all splines in the given object
-    for i in range(len(tVals) - 1):
-        # tX is a list of the coefficients of the equation x = At^3 + Bt^2 + Ct + D
-        # tY is a list of the coefficients of the equation y = at^3 + bt^2 + ct + d
-        # tZ is a list of the coefficients of the equation z = aat^3 + bbt^2 + cct + dd
-        tX = [csx.c[0][i], csx.c[1][i], csx.c[2][i], csx.c[3][i]]
-        tY = [csy.c[0][i], csy.c[1][i], csy.c[2][i], csy.c[3][i]]
-        tZ = [csz.c[0][i], csz.c[1][i], csz.c[2][i], csz.c[3][i]]
-        
-        # define the parametric functions fx_dt(t), fy_dt(t), and fz_dt(t)
-        def fx_dt(t):
-            return 3*tX[0]*t**2 + 2*tX[1]*t + tX[2]
-        
-        def fy_dt(t): 
-            return 3*tY[0]*t**2 + 2*tY[1]*t + tY[2]
-
-        def fz_dt(t): 
-            return 3*tZ[0]*t**2 + 2*tZ[1]*t + tZ[2]
-        
-        # Integrate the square root of the sum of dX^2, dY^2, dZ^2 
-        #   with respect to t from t = i to t = i + 1
-        length = integrate.quadrature(
-                lambda t: np.sqrt(fx_dt(t)**2 + fy_dt(t)**2 + fz_dt(t)**2), 
-                tVals[i], tVals[i + 1], maxiter = 10000)
-        
-        length = length[0]
-
-        # add the segment length to the total path length
-        totalLength += length
-
-    return totalLength
-
-#----------------------------------------------------------------------------------#
-
-# Helper function for main. Returns a list of circle tuples
-# Each circle tuple is of the form ((h, k), r) where (h, k) is the center and r is
-#   the radius
-
-# TO DO: keep the circles within (or mostly within) the polygon
-
-def makeRandomCircles(numCircles, wpx, wpy, poly):
-    import random
-
-    polyObj = Polygon.Polygon(poly)
-
-    # Put given waypoints into a list of (x, y) points
-    pts = []
-    for i in range(len(wpx)):
-        pt = (wpx[i], wpy[i])
-        pts.append(pt)
-
-    # Generate Random Obstacles
-    count = 0
-    circles = set()
-
-    # Create n random, non-overlapping circles
-    while (count < numCircles):
-        # Random center and radius
-        h = random.uniform(0.0, 1300.0)
-        k = random.uniform(0.0, 1300.0)
-        r = random.uniform(30*12*0.0254, 300*12*0.0254)
-
-        # Determine if the circle contains a waypoint
-        key = False
-        for pt in pts:
-            if (np.linalg.norm((pt[0] - h, pt[1] - k)) < (r * 1.1)):
-                key = True
-                break
-
-            else:
-                for circle in circles:
-                    distBtwnCircles = np.linalg.norm([circle[0][0] - h, 
-                                                    circle[0][1] - k])
-                    
-                    if (distBtwnCircles < (circle[1] + r)* 1.1):
-                        key = True
-                        break
-
-        # If any of the waypoints are inside the circle, don't use this circle
-        if key:
-            continue
-
-        # If the center of the circle is outside the polygon, don't use this circle
-        if (not polyObj.isInside(h, k)):
-            continue
-
-        # Add circle to plot and list of circles
-        circles.add(((h, k), r))
-        count += 1
-
-    return circles
-
-#----------------------------------------------------------------------------------#
 
 # csx is the cubic spline of x as a function of t
 # csy is the cubic spline of y as a function of t
@@ -421,9 +240,6 @@ def cubicSplineCircleCollisions(csx, csy, tVals, circle, segments=None):
 
 # tVals is the list of parametric points serving as the knots for the cubic spline
 
-# TO DO: Convert from poly being a list as an input to a polygon object
-# poly is a Polygon object where each pt represents a vertice of the comp boundary
-
 # segments in a list of the spline segments to iterate through. Must be continuous.
 #   Examples: 
 #       To iterate through the first 5 segments of cubic spline:
@@ -439,6 +255,9 @@ def cubicSplineCircleCollisions(csx, csy, tVals, circle, segments=None):
 #       outside the polygon
 #   polySeg is the line segment of intersection.
 #       It is of the form ((x0, x1), (y0, y1))
+
+# TO DO: Pass this a Polygon object from the library, or both the list and Polygon
+#   object. Should be faster since it doesn't have to make the object every time
 
 def cubicSplinePolygonCollisions(csx, csy, tVals, poly, segments=None):
     # Helper Method:
@@ -804,35 +623,144 @@ def cubicSplinePolygonCollisions(csx, csy, tVals, poly, segments=None):
 #----------------------------------------------------------------------------------#
 
 # wpx and wpy are the lists of waypoints
-# csx and csy are the parametric cubic splines with knots at the points in t
+# tVals are the parameter values
+
+# poly is a list of (x, y) vertice points of the outer polygon boundary
+# circles is set of circles. Circles are of the form ((h, k), r) where (h, k) is the 
+#   center and r is the radius
+
+# i is the index of the spline segment that needs fixing
+
+# Through random guesses, this function finds individual intermediate waypoints that 
+#   could be added to the given spline segment in order to stop it from having 
+#   collisions.
+# That is, it randomly guesses a point and inserts it into the spline segment. Then
+#   it checks if this new spline segment intersects with the polygon. It does this
+#   either until the max number of valid solutions is found, or the max number of
+#   allowed guesses it hit and there is at least 1 solution
+
+# TO DO: Create a potential fields solution as a heuristic (in another function) 
+#   Potential fields -> stream function.
+#   Find streamline(s) that get to the goal
+#   Randomly sample points along the streamline(s) 
+
+# TO DO: Don't use points that make the previously fixed splines collide again,
+#   and/or need to do slight optimization of intermediate waypoints
+
+def monteCarloSearch(wpx, wpy, tVals, poly, circles, i, maxGuesses, maxSolutions):
+    # Make a copy of the inputs so as to not destory them
+    wpxNew = copy.copy(wpx)
+    wpyNew = copy.copy(wpy)
+    tNew = copy.copy(tVals)
+
+    # TO DO:
+    #   Modify the first new guess pt to be better.
+    #   Ignore circle collisions. Consider no concavity sign change, etc
+
+    seedPt = ((wpxNew[i] + wpxNew[i+1]) / 2, (wpyNew[i] + wpyNew[i+1]) / 2)
+
+    wpxNew.insert(i+1, seedPt[0])
+    wpyNew.insert(i+1, seedPt[1])
+
+    # TO DO: make this dist not garbage. Take into account the dist to the 
+    #   polygon, etc, the fact that it can move different distances in
+    #   different directions, etc
+    # Dist is the distance from the previous waypoint to the new 
+    #   intermediate waypoint.
+
+    dist = np.linalg.norm([(wpxNew[i], wpyNew[i]), (wpxNew[i+1], wpyNew[i+1])])
+
+    # This keeps track of the number of guesses taken
+    guessCounter = 0
+
+    # This keeps track of the number of points that create a valid solution
+    solutions = []
+
+    # Search for solutions until the max number of solutions is found
+    while (len(solutions) < maxSolutions):
+        # If the number of guesses exceeds the maxGuesses and there is at least one
+        #   solution, stop searching for solutions
+        if (guessCounter > maxGuesses and len(solutions) > 0):
+            break
+
+        # TO DO: Add some better heuristic to this to make gueses more likely to
+        #   stick and to make them better in general
+        randPt = (seedPt[0] + dist/4 * np.random.normal(), 
+                seedPt[1] + dist/4 * np.random.normal())
+
+        guessCounter += 1
+
+        wpxNew[i+1] = randPt[0]
+        wpyNew[i+1] = randPt[1]
+
+        csx = CubicSpline(tNew, wpxNew)
+        csy = CubicSpline(tNew, wpyNew)
+
+        # Check if there are any collisions with the polygon. If so, go back
+        #   around to generate a new random point
+        if (cubicSplinePolygonCollisions(csx, csy, tNew, poly, [i, i+1])):
+            continue
+
+        # Check if there are any collisions with the circle. If so, go back
+        #   around to generate a new random point
+        circCollision = False
+        for circle in circles:
+            # Check for circle collisions
+            if (cubicSplineCircleCollisions(csx, csy, tNew, circle, [i, i+1])):
+                circCollision = True
+            
+            # If at any point there is a circle collision, stop looking
+            #   for more becasue this point is useless
+            if circCollision:
+                break
+
+        # If there was a circle collision, go back to the start of the loop.
+        #   Do not pass Go, do not collect $200
+        if circCollision:
+            continue
+
+        solutions.append(randPt)
+        print (len(solutions))
+
+    return solutions
+
+#----------------------------------------------------------------------------------#
+
+# wpx and wpy are the lists of waypoints
+# tVals are the parameter values
 
 # poly is a list of (x, y) vertice points of the outer polygon boundary
 # circles is set of circles. Circles are of the form ((h, k), r) where (h, k) is the 
 #   center and r is the radius
 
 # TO DO: 
-#   Modify collision finding function to operate on a given range, not the 
-#       whole spline at once
 #   Fix the spline segment by segment starting from the beginning
-#   Feels like a polygon intersection can be fixed with one intermediate waypoint
-#   Fix the poly collisions first, put an intermediate waypoint at the midpoint of
-#       the line connecting the two actual waypoints. Shift it around a little to 
-#       avoid intersecting the circle obstacles. 
-#       (possibly generte points off line connecting actual waypoints, possibly 
-#       randomly generate points farther and farther from the line until one an 
-#       intermediate waypoint works well) 
-#       Make sure the entirety of the current spline stays within the boundaries
+#   Feels like a single polygon intersection can be fixed with a single 
+#       intermediate waypoint
+
+# TO DO:
 #   (In another function) To fix the circle obstacles, may need one waypoint per 
 #       circle collision. Try putting the waypoint on both sides of the circle to 
 #       see whether shifting cw or ccw is better
+
+# Super TO DO:
+#   This is going probably going to have to become some search algorithm
+#   'Legal Action Generator' function almost complete 
+#       (monteCarloSearch finds points that work, needs to make sure it doesn't mess 
+#       up downstream segements)
+#   'State Generator' function is complete (scipy's cubic spline generator)
+#   'Cost Function' not started. For now probs minimize sum of square of curvature
+#   'A*' should be able to be copied from CS188 files
+#   'Actions' can be thought of as the additional points between real waypoints
 
 def fixPolygonIntersections(wpx, wpy, tVals, poly, circles):
     csx = CubicSpline(tVals, wpx)
     csy = CubicSpline(tVals, wpy)
 
+    # A copy of the original objects so we don't destory them
     wpyNew = copy.copy(wpy)
     wpxNew = copy.copy(wpx)
-    t = copy.copy(tVals)
+    tNew = copy.copy(tVals)
 
     #polyObj = Polygon.Polygon(poly)
 
@@ -844,84 +772,33 @@ def fixPolygonIntersections(wpx, wpy, tVals, poly, circles):
     # Going to iterate through all segments of the spline
     while (i < (len(wpxNew) - 1)):
         # Find collisions between the polygon and the current spline segment
-        collisions = cubicSplinePolygonCollisions(csx, csy, t, poly, [i])
+        collisions = cubicSplinePolygonCollisions(csx, csy, tNew, poly, [i])
 
         # If there is a collision
         if len(collisions): 
             # Put the intermediate point at the point of interest
-            t.insert(i+1, collisions[0][1])
-            
-            # TO DO:
-            #   Modify the new pt so the path doesn't change concavity
-            # Need a concavity function
-            #   Look into concavity of parametric eqns
-            #       dy^2/ d^2x = (d/dt)((dy/dt)/(dx/dt)) / (dx/dt)
-            #           = ((dx/dt)(dy^2/d^2t) - (dy/dt)(dx^2/d^2t)) / (dx/dt)^2
+            tNew.insert(i+1, collisions[0][1])
 
-            newPt = ((wpxNew[i] + wpxNew[i+1]) / 2, (wpyNew[i] + wpyNew[i+1]) / 2)
-            wpxNew.insert(i+1, newPt[0])
-            wpyNew.insert(i+1, newPt[1])
+            solutions = monteCarloSearch(wpxNew, wpyNew, tNew, poly, circles, i, 3000, 20)
+            print ("Found")
 
-            csx = CubicSpline(t, wpxNew)
-            csy = CubicSpline(t, wpyNew)
+            # TO DO: Evaulate all points in solutions to pick the best
+            #   Do that here instead of just taking the first solution
+            bestPt = solutions[0]
+            wpxNew.insert(i+1, bestPt[0])
+            wpyNew.insert(i+1, bestPt[1])
 
-            # circCollisions contains all collisions between the circles & the path
-            circCollisions = []
-            for circle in circles:
-                circCollisions += cubicSplineCircleCollisions(csx, csy, t, circle, [i, i+1])
-
-            # TO DO: make this dist not garbage. Take into account the dist to the 
-            #   polygon, etc, the fact that it can move different distances in
-            #   different directions, etc
-            # Dist is the distance from the previous waypoint to the new 
-            #   intermediate waypoint.
-
-            dist = np.linalg.norm([(wpxNew[i], wpyNew[i]), (wpxNew[i+1], wpyNew[i+1])])
-
-            p = 0
-
-            # While there is still a circle collision
-            while (circCollisions):
-                # TO DO: Make a new function that picks a point within an area, not
-                #   just a distance away from the first guess
-                # TO DO: May want to generate several points and pick the best path
-                # Create a new intermediate waypoint some random distance away from
-                #   the first guess. Normally distributed so it prefers pts near the
-                #   original guess 
-                randPt = (newPt[0] + dist/4 * np.random.normal(), 
-                        newPt[1] + dist/4 * np.random.normal())
-
-                print (p)
-                p += 1
-
-                wpxNew[i+1] = randPt[0]
-                wpyNew[i+1] = randPt[1]
-
-                csx = CubicSpline(t, wpxNew)
-                csy = CubicSpline(t, wpyNew)
-
-                # TO DO: Check the segment list passed over the next ~10 lines. 
-                #   Inserting a new intermediate waypoint splits one original spline 
-                #   segment into 2. Make sure polygon and circle collisions test
-                #   the appropriate splines. It does not appear to be doing so 
-
-                # Check if there are any collisions with the polygon. If so, loop
-                #   around to generate a new random point
-                if (cubicSplinePolygonCollisions(csx, csy, t, poly, [i, i+1])):
-                    continue
-
-                # Update the circle collision
-                circCollisions = []
-                for circle in circles:
-                    circCollisions += cubicSplineCircleCollisions(csx, csy, t, circle, [i, i+1])
-
+            csx = CubicSpline(tNew, wpxNew)
+            csy = CubicSpline(tNew, wpyNew)
+        
             # TO DO: will eventually need to remove the plotting
             # Plot parametric cubic splines
+
             plt.plot(wpxNew, wpyNew, 'x', label = 'data', color = (0,0,0,1))
 
             # Plot the path
             s = 0.01
-            tSpace = np.arange(t[0], t[len(t)-1] + s, s)
+            tSpace = np.arange(tNew[0], tNew[len(tNew)-1] + s, s)
             plt.plot(csx(tSpace), csy(tSpace))
             
             # Plot the circles
@@ -947,9 +824,196 @@ def fixPolygonIntersections(wpx, wpy, tVals, poly, circles):
 
             plt.show()
 
+
         # Move on to the next spline segment
         i += 1
 
-    return (wpxNew, wpyNew, t)
+    return (wpxNew, wpyNew, tNew)
 
 #----------------------------------------------------------------------------------#
+# Given 3 lists, a list for each of the x, and y coordinates of waypoints, as well
+#   as an init spacing for the parameter. Initial spacing must be stricly increasing
+# Lists need to be of the same length
+# Pass a costFunction that evaluates the cost of the spline
+
+# If successful, returns (t_opt, True) where t_opt is the optimal spacing
+# If unsuccessful, returns (t, False) where t is the original spacing
+def optimizeParameterSpacing(wpx, wpy, tVals, costFunc):
+    def evalSpacing(x, tVals):
+        # The first two parameters are fixed
+        # Any scalar multiple of the spacing results in the same spline
+        spacing = [tVals[0], tVals[1]]
+
+        # Add the other (n-2) terms to t
+        for param in x:
+            # x contains the difference between the current and previous index
+            # Exponential is used to ensure the value is strictly positive
+            # This ensures that t is strictly increasing
+            spacing.append(spacing[-1] + np.exp(param))
+
+        csx = CubicSpline(spacing, wpx)
+        csy = CubicSpline(spacing, wpy)
+
+        # TO DO: make this use the actual z spline
+        # Just for testing, keeps z at same altitude the whole time
+        wpz = np.array(len(wpx))
+        wpz.fill(200)
+        csz = CubicSpline(spacing, wpy)
+
+        # Return some cost of the spline
+        length = costFunc(csx, csy, csz, spacing)
+        print (length)
+        return length
+
+    #--------------------------------------------------------------------------#
+
+    x0 = []
+    for i in range(len(tVals)):
+        if (i == 0 or i == 1):
+            continue
+
+        # Difference between the current     
+        diff = tVals[i] - tVals[i-1]
+        x0.append(np.log(diff))
+
+    # x is now an array representing the natural log of the difference between 
+    #   non-fixed values of t
+    x0 = np.array(x0)
+
+    # To aquire the respective spacing, simply exponentiate an element of x and add 
+    #   it to the previous element in the spacing
+    # This allows for the elements of x to take on any real value while ensuring
+    #   that the respective spacing is strictly increasing
+    opt_obj = minimize(evalSpacing, x0, tVals, method = 'Nelder-Mead', tol = 1e-8, 
+                    options = {'maxiter':5000})
+
+    # Determine if the optimization was successful (it should be in all cases)
+    if (opt_obj.success):
+        x_opt = opt_obj.x
+
+        # The first two parameters are fixed
+        # Any scalar multiple of the spacing results in the same spline
+        t_opt = [tVals[0], tVals[1]]
+
+        # Add the other (n-2) terms to t
+        for param in x_opt:
+            # x contains the difference between the current and previous index
+            # This ensures that t is monotomically increasing
+            t_opt.append(t_opt[-1] + np.exp(param))
+
+        return (t_opt, True)
+
+    # If unsucessful, deal with it. Life isn't fair
+    else:
+        return (tVals, False)
+
+#----------------------------------------------------------------------------------#
+
+# csx is the cubic spline of x as a function of t
+# csy is the cubic spline of y as a function of t
+# csz is the cubic spline of z as a function of t (optional)
+
+# tVals is the list of parametric points serving as the knots for the cubic spline
+
+# Returns the arc length of the parametric line between the bounds of the parameter
+# Supports 2D and 3D splines
+
+def arcLength(tVals, csx, csy, csz=None):
+    totalLength = 0
+
+    # If there was no z spline given, make it sit flat on the x-y plane
+    # The arc length will just be from the x and y splines
+    if (csz == None):
+        wpz = csx.x
+        wpz.fill(0)
+        csz = CubicSpline(tVals, wpz)
+
+    # Loop thru all splines in the given object
+    for i in range(len(tVals) - 1):
+        # tX is a list of the coefficients of the equation x = At^3 + Bt^2 + Ct + D
+        # tY is a list of the coefficients of the equation y = at^3 + bt^2 + ct + d
+        # tZ is a list of the coefficients of the equation z = aat^3 + bbt^2 + cct + dd
+        tX = [csx.c[0][i], csx.c[1][i], csx.c[2][i], csx.c[3][i]]
+        tY = [csy.c[0][i], csy.c[1][i], csy.c[2][i], csy.c[3][i]]
+        tZ = [csz.c[0][i], csz.c[1][i], csz.c[2][i], csz.c[3][i]]
+        
+        # define the parametric functions fx_dt(t), fy_dt(t), and fz_dt(t)
+        def fx_dt(t):
+            return 3*tX[0]*t**2 + 2*tX[1]*t + tX[2]
+        
+        def fy_dt(t): 
+            return 3*tY[0]*t**2 + 2*tY[1]*t + tY[2]
+
+        def fz_dt(t): 
+            return 3*tZ[0]*t**2 + 2*tZ[1]*t + tZ[2]
+        
+        # Integrate the square root of the sum of dX^2, dY^2, dZ^2 
+        #   with respect to t from t = i to t = i + 1
+        length = integrate.quadrature(
+                lambda p: np.sqrt(fx_dt(p)**2 + fy_dt(p)**2 + fz_dt(p)**2), 
+                tVals[i], tVals[i + 1])
+        
+        length = length[0]
+
+        # add the segment length to the total path length
+        totalLength += length
+
+    return totalLength
+
+#----------------------------------------------------------------------------------#
+
+# Helper function for main. Returns a list of circle tuples
+# Each circle tuple is of the form ((h, k), r) where (h, k) is the center and r is
+#   the radius
+
+def makeRandomCircles(numCircles, wpx, wpy, poly):
+    import random
+
+    polyObj = Polygon.Polygon(poly)
+
+    # Put given waypoints into a list of (x, y) points
+    pts = []
+    for i in range(len(wpx)):
+        pt = (wpx[i], wpy[i])
+        pts.append(pt)
+
+    # Generate Random Obstacles
+    count = 0
+    circles = set()
+
+    # Create n random, non-overlapping circles
+    while (count < numCircles):
+        # Random center and radius
+        h = random.uniform(0.0, 1300.0)
+        k = random.uniform(0.0, 1300.0)
+        r = random.uniform(30*12*0.0254, 300*12*0.0254)
+
+        # Determine if the circle contains a waypoint
+        key = False
+        for pt in pts:
+            if (np.linalg.norm((pt[0] - h, pt[1] - k)) < (r * 1.1)):
+                key = True
+                break
+
+            else:
+                for circle in circles:
+                    distBtwnCircles = np.linalg.norm([circle[0][0] - h, 
+                                                    circle[0][1] - k])
+                    
+                    if (distBtwnCircles < (circle[1] + r)* 1.1):
+                        key = True
+                        break
+
+        # If any of the waypoints are inside the circle, don't use this circle
+        if key:
+            continue
+
+        # If the center of the circle is outside the polygon, don't use this circle
+        if (not polyObj.isInside(h, k)):
+            continue
+
+        # Add circle to plot and list of circles
+        circles.add(((h, k), r))
+        count += 1
+
+    return circles
