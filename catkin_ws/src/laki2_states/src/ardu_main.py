@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-import argparse
 
 import rospy, mavros
 import math, smach, smach_ros
@@ -7,6 +6,8 @@ from mavros_msgs.srv import CommandBool, SetMode, ParamGet, CommandTOL
 from mavros_msgs.msg import State, RCIn
 from nav_msgs.msg import Odometry
 from geometry_msgs.msg import PoseStamped, TwistStamped
+
+import ardu_flight
 
 ''' the main states for Laki2's state machine (SMACH)'''
 
@@ -74,6 +75,8 @@ class Preflight(smach.State):
 		rate = rospy.Rate(30) #runs following loop at 30hz
 
 		targetFlag = True
+		readyFlag = True
+		noOdomFlag = True
 
 		while not rospy.is_shutdown():
 
@@ -84,17 +87,22 @@ class Preflight(smach.State):
 				rospy.loginfo(TextColors.WARNING + 'MAVROS NOT RUNNING' + TextColors.ENDC)
 				continue
 
-			if (current_pos is None):
+			if (current_pos is None and noOdomFlag):
 				rospy.loginfo(TextColors.WARNING + 'NO ODOMETRY DATA' + TextColors.ENDC)
+				noOdomFlag = False
 				continue	
 
-			#does nothing if no target is published	(/laki2/flight_target)
-			if (not gotTarget):
-				continue	
+			if (readyFlag):	
+				rospy.loginfo(TextColors.OKBLUE+ 'READY WHEN YOU ARE' + TextColors.ENDC)	
+				readyFlag = False
 
-			if (gotTarget and targetFlag):
-				rospy.loginfo(TextColors.OKGREEN + 'TARGET RECEIVED' + TextColors.ENDC)	
-				targetFlag = False	
+			# #does nothing if no target is published	(/laki2/flight_target)
+			# if (not gotTarget):
+			# 	continue	
+
+			# if (gotTarget and targetFlag):
+			# 	rospy.loginfo(TextColors.OKGREEN + 'TARGET RECEIVED' + TextColors.ENDC)	
+			# 	targetFlag = False	
 
 			#listens for RC switch, if ON (2113) switches to TAKEOFF state
 			#rcNum is from function getRCChannels()
@@ -109,7 +117,7 @@ class Takeoff(smach.State):
 	'''uses built-in AUTO.TAKEOFF to lift to a parameter-set altitude (2.5m by default)'''
 
 	def __init__(self):
-		smach.State.__init__(self, outcomes=['exit','toPREFLIGHT'])
+		smach.State.__init__(self, outcomes=['exit','toPREFLIGHT','toFLIGHT_SM'])
 
 
 	#NOT WORKING FOR ARDUPILOT	
@@ -139,16 +147,25 @@ class Takeoff(smach.State):
 		else:
 			guided = False	
 
+		takeoffFlag = True	
+
+		# startAlt = current_pos.pose.pose.position.z	
+
 		while not rospy.is_shutdown():
 
 			# rospy.loginfo(TextColors.FAIL + current_state.mode)
 
-			if (current_state.armed and guided):
+			if (current_state.armed and guided and takeoffFlag):
 				takeoffCommandSrv = rospy.ServiceProxy("/mavros/cmd/takeoff", CommandTOL)
 				takeoffResponse = takeoffCommandSrv(0.0,0.0,0,0,10.0)
-				rospy.loginfo(takeoffResponse)
 
-				return 'exit'	
+				if takeoffResponse.success == 'True':
+					takeoffFlag = False
+				
+				# rospy.loginfo(takeoffResponse)
+
+			if (current_pos.pose.pose.position.z <= 10.1 and current_pos.pose.pose.position.z >= 9.9):	
+				return 'toFLIGHT_SM'
 
 			if (current_state.mode != 'GUIDED'):	
 				try:	#service call to set mode to takeoff
@@ -164,7 +181,7 @@ class Takeoff(smach.State):
 			if ((not current_state.armed) and guided): 
 				armCommandSrv = rospy.ServiceProxy("/mavros/cmd/arming", CommandBool)		
 				armResponse = armCommandSrv(True)
-				rospy.loginfo(armResponse)
+				# rospy.loginfo(armResponse)
 
 			
 
@@ -179,62 +196,6 @@ class Takeoff(smach.State):
 			# 		return 'toFLIGHT'	
 
 			rate.sleep()	
-
-#PART OF FLIGHT_SM
-class Standby(smach.State):
-	
-	def __init__(self):
-		smach.State.__init__(self, outcomes=['toTO_LOCAL','exit'])
-
-	def execute(self, userdata):
-	
-		if ((current_state.mode != 'AUTO.LOITER')):	
-			try:	#service call to set mode to takeoff
-				setModeSrv = rospy.ServiceProxy("/mavros/set_mode", SetMode) #http://wiki.ros.org/mavros/CustomModes
-				setModeResponse = setModeSrv(0, 'AUTO.LOITER')
-				# rospy.loginfo(str(setModeResponse) + '\nMODE: %s' % current_state.mode)
-
-			except rospy.ServiceException, e:
-				rospy.loginfo('Service call failed: %s' %e)	
-
-
-#PART OF FLIGHT_SM
-class ToLocal(smach.State):
-
-
-	'''A flight mode that allows navigation to local setpoints'''
-
-	def __init__(self):
-		smach.State.__init__(self, outcomes=['toSTANDBY','exit'])
-		self.target_pub = rospy.Publisher('/mavros/setpoint_position/local', PoseStamped, queue_size=100)
-		# self.target_pub = None
-		
-	def publishSetpoint(self,target):
-			
-		self.target_pub.publish(target)
-
-	def execute(self, userdata):
-		
-		rospy.loginfo("FLIGHT REACHED")
-
-		rate = rospy.Rate(30)
-
-		rospy.Subscriber("/laki2/flight_target/local", PoseStamped, self.publishSetpoint) #tells where we're going
-
-		while not rospy.is_shutdown():
-
-			if ((current_state.mode != 'OFFBOARD') and (gotTarget) and current_state.armed):	
-				try:	#service call to set mode to OFFBOARD
-					setModeSrv = rospy.ServiceProxy("/mavros/set_mode", SetMode) #http://wiki.ros.org/mavros/CustomModes
-					setModeResponse = setModeSrv(0, 'OFFBOARD')
-					# rospy.loginfo(str(setModeResponse) + '\nMODE: %s' % current_state.mode)
-
-				except rospy.ServiceException, e:
-					rospy.loginfo('Service call failed: %s' %e)
-
-						
-
-			rate.sleep()
 
 
 def main():
@@ -252,23 +213,21 @@ def main():
 	with sm:
 
 		smach.StateMachine.add('PREFLIGHT', Preflight(), transitions={'toTAKEOFF':'TAKEOFF','exit':'exit_sm'})
-		smach.StateMachine.add('TAKEOFF', Takeoff(), transitions={'toPREFLIGHT': 'PREFLIGHT','exit':'exit_sm'})
+		smach.StateMachine.add('TAKEOFF', Takeoff(), transitions={'toPREFLIGHT': 'PREFLIGHT','toFLIGHT_SM':'FLIGHT_SM','exit':'exit_sm'})
 
-		# smach.StateMachine.add('PREFLIGHT', Preflight(), transitions={'toTAKEOFF': 'TAKEOFF','toFLIGHT':'FLIGHT_SM'})
-		# smach.StateMachine.add('TAKEOFF', Takeoff(), transitions={'toPREFLIGHT': 'PREFLIGHT','toFLIGHT': 'FLIGHT_SM'})
-		# smach.StateMachine.add('FLIGHT', Flight(), transitions={'toPREFLIGHT':'PREFLIGHT','exit':'exit_sm'})
+		flight_sm = smach.StateMachine(outcomes=['exit_flight_sm'])
 
-		# flight_sm = smach.StateMachine(outcomes=['exit_flight_sm'])
+		with flight_sm:
 
-		# with flight_sm:
+			smach.StateMachine.add('STANDBY', ardu_flight.Standby(), transitions={'toMISSION':'MISSION','exit_flight':'exit_flight_sm'})
+			smach.StateMachine.add('MISSION', ardu_flight.Mission(), transitions={'toSTANDBY':'STANDBY','exit_flight':'exit_flight_sm'})
 
-		# 	smach.StateMachine.add('TO_LOCAL', ToLocal(), transitions={'toSTANDBY':'STANDBY','exit':'exit_flight_sm'})
-		# 	smach.StateMachine.add('STANDBY', Standby(), transitions={'toTO_LOCAL':'TO_LOCAL','exit':'exit_flight_sm'})
-
-		# smach.StateMachine.add('FLIGHT_SM', flight_sm, transitions={'exit_flight_sm':'exit_sm'})	
+		smach.StateMachine.add('FLIGHT_SM', flight_sm, transitions={'exit_flight_sm':'exit_sm'})	
 
 	introspect = smach_ros.IntrospectionServer('server', sm, '/SM')
 	introspect.start()
+
+	#to run SMACH Viewer:   rosrun smach_viewer smach_viewer.py
 
 	outcome = sm.execute()	
 	
