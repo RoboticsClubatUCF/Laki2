@@ -7,7 +7,7 @@
 
 	<include file="$(find px4)/launch/mavros_posix_sitl.launch">
 		<!-- <arg name="sdf" value="son_iris"/> -->
-		<arg name="sdf" value="$(find laki2_sim)/models/iris/iris.sdf"/>
+		<arg name="sdf" value="$(find laki2_sim)/models/iris/model.sdf"/>
 		<arg name="paused" value="false"/>
 		<!-- <arg name="headless" value="true"/> -->
 	</include>
