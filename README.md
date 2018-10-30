@@ -1,4 +1,4 @@
 # Laki2
 SUAS
 
-Robotics Club @ UCF: Laki2
+## Robotics Club @ UCF: Laki2
