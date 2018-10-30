@@ -339,9 +339,9 @@ class vehicle:
             # Value to optimize to 0
             remainingEnergy = batteryEnergy - energyUsed
 
-            print "\nenergyUsed: \t", energyUsed
-            print "batteryEnergy: \t", batteryEnergy
-            print "capacity: \t", capacity
+            #print "\nenergyUsed: \t", energyUsed
+            #print "batteryEnergy: \t", batteryEnergy
+            #print "capacity: \t", capacity
 
             # if there is energy remaining, reduce the number of batteries,
             # else increase the number of batteries
