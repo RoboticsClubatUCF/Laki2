@@ -1,6 +1,12 @@
 import numpy as np
 from scipy import integrate
 from scipy.optimize import minimize
+import matplotlib.pyplot as plt
+
+#----------------------------------------------------------------------------------#
+
+# BE WARNED: currently does not work for spool sizes other than what is listed as a
+#   constant here
 
 # Define Constants:
 
@@ -8,17 +14,24 @@ from scipy.optimize import minimize
 mass = 1.36078
 
 # Drop Height in m
-dropHeight = 60.96
+dropHeight = 30.48
 
 # Gravity in m/s^2
 g = 9.81
 
 # Landing speed in m/s
-landingSpeed = 6
+landingSpeed = 5.5
 
 # Max motor hub radius
-maxAllowableHub =  3 * 0.0254
+maxHub =  3 * 0.0254
 
+# TO DO: this is not currently done properly. Make functions use this as an input 
+#   from another souce, not as a global variable
+spoolWidth = 0.1524 / 2
+
+#----------------------------------------------------------------------------------#
+
+"""
 # This is basically useless
 # maxElec is a list of [maxVoltage, maxCurrent, maxPower]
 def resCalc(Kv, Ra, gear, hub, maxElec):
@@ -36,6 +49,8 @@ def resCalc(Kv, Ra, gear, hub, maxElec):
 
     # Returns the net power into the UGV with the given external resistance and
     #   motor hub size
+    # TO DO: the max power of the resistor is 3W (voltage divider also)
+
     def resEval(externRes):
         # Resistors in series
         totalRes = Ra + externRes
@@ -59,11 +74,38 @@ def resCalc(Kv, Ra, gear, hub, maxElec):
     # Otherwise return a non-physical value
     else:
         return -1
+"""
+
+#----------------------------------------------------------------------------------#
+
+# Estimates the size of a given hub at a given height due to the wrapping of the 
+#   tether
+def effHub(hub, height, spoolWidth):
+    # The fishing line can be thought of as cylinders wrapped around a circle
+    # It can be modeled ad cylinders with some packing efficiency
+
+    # cross sectional area is assumed to be that of 30lb fishing line (Dia = 0.022")
+    tetherCrossArea = np.pi * (0.022 * 0.0254 / 2)**2
+
+    # Height is the length of wire remaining
+    # Volume (with 100% packing efficiency) is height * cross sectional area
+    volume = height * tetherCrossArea
+
+    # Assume it has 90% of the theoretical cylinder packing efficiency of 91%:
+    volume /= 0.91 / 0.9
+
+    # Find the cross sectional area of the spool
+    spoolCrossArea = volume / spoolWidth
+
+    # Area of an annulus is pi(R^2 -r^2)
+    effHub = np.sqrt((spoolCrossArea / np.pi) + hub**2)
+
+    return effHub
 
 # Returns lists for time, y, y', and tension in the tether
 #   of a vehicle dropping in 0 air friction from the drop height to the ground
 # Solve numerically
-def drop(brakeHeight, maxSpeed, Kv, Ra, gear, hub, res):
+def drop(brakeHeight, maxSpeed, Kv, Ra, gear, hub, spoolWidth, res):
     # Calculates the voltage, current, power, and force from the motors
     # Inputs speed in m/s
     # Outputs [voltage, current, power, force]
@@ -75,7 +117,7 @@ def drop(brakeHeight, maxSpeed, Kv, Ra, gear, hub, res):
             return [0, 0, 0, 0]
 
         # Motor speed in rad/s: gear-ratio * linear-velocity / hub-radius
-        omega = gear * abs(speed) / hub
+        omega = gear * abs(speed) / effHub(hub, height, spoolWidth)
 
         # Voltage produced by the motor
         voltage = omega / Kv
@@ -90,9 +132,6 @@ def drop(brakeHeight, maxSpeed, Kv, Ra, gear, hub, res):
         power = voltage**2 / totalRes
 
         # Force from motor: power = force * linear-velocity
-        # TO DO: Double check that this lines up with 
-        #   power = omega * torque
-        #   torque = hub-radius * force
         force = power / abs(speed)
 
         return [voltage, current, power, force]
@@ -130,6 +169,12 @@ def drop(brakeHeight, maxSpeed, Kv, Ra, gear, hub, res):
     yVals = []
     yPrimeVals = []
     tensionVals = []
+    resVolt = []
+    motorVolt = []
+    sysCurr = []
+    rmsPower = []
+    resPower = []
+    motorPower = []
 
     # While the vehicle is not on the ground, continue to iterate
     while (U[0] > 0):
@@ -144,52 +189,186 @@ def drop(brakeHeight, maxSpeed, Kv, Ra, gear, hub, res):
 
         tVals.append(ts[1])
         yVals.append(U[0])
-        yPrimeVals.append(U[1])
+        yPrimeVals.append(-U[1])
 
-    return (tVals, yVals, yPrimeVals, tensionVals)
+        volts, curr, powers = brakeElecProps(Kv, Ra, gear, 
+            effHub(hub, U[0], spoolWidth), res, U[1])
 
-# Returns lists for time, y, y', and tension in the tether
+        motorVolt.append(-volts[0])
+        resVolt.append(-volts[1])
+        
+        sysCurr.append(-curr)
+        
+        resPower.append(powers[1])
+        motorPower.append(powers[0])
+
+        power = motorVals(U[1], U[0])[2]
+        rmsPower.append(power)
+
+    return (tVals, yVals, yPrimeVals, resVolt, motorVolt, sysCurr, rmsPower, resPower, motorPower, tensionVals)
+
+#----------------------------------------------------------------------------------#
+
+# Returns lists for time, and y
 #   of a vehicle dropping in 0 air friction from the drop height to the ground
-# Solve analytically
-def analyticalDrop(brakeHeight, speedHeight, maxSpeed, Kv, Ra, gear, hub, res):
-    # TO DO:
-    #   Walk thru this peicewise:
-    #   step 1: complete free fall from drop height to speedHeight, use kinematics
-    #   step 2: perfect PWM from speedHeight to brakeHeight, constant speed of maxSpeed
-    #   step 3: decay into maxSpeed, diff Eq:
-    #       c^2 * y(t) = a * c^2 + b * c * m * (1-e^(-c*t/m)) + d * m * (e^(-c*t/m) - 1) + c*d*t
-    #       c = (gear * hub / Kv)^2 / (totRes)
-    #       d = mass * g
-    #       m = mass
-    #       a = brakeHeight
-    #       b = maxSpeed
+# Solve analytically (at least mostly analytically)
+def analyticalDrop(brakeHeight, maxSpeed, Kv, gear, hub, totalRes, flag = None):
+    # Returns the height of the UGV for a given time after the brakeHeight
+    def decayedDescentPos(t):
+        # Height as a function of time (solved by wolfram symbolic diff eq solver):        
+        #   y(t) = brakeHeight + (g * m^2 / c^2) * (exp(r) - 1) + (g * m / c) * t
+        #       + (maxSpeed * m / c) * (1 - exp(r))
 
-# Calculates electric properties
+        #   Where:
+        #       g = -abs(gravity)
+        #       m = mass
+        #       c = (gear * hub / Kv)^2 / (totRes)
+        #       r = -c * t / m
+
+        c = (gear /(hub * Kv))**2 / (totalRes)        
+        r = -c * t / mass
+        gravity = -g
+        speed = -maxSpeed
+
+        height = (brakeHeight + (gravity * mass**2 / c**2) * (np.exp(r) - 1)
+            + (gravity * mass / c) * t - (maxSpeed * mass / c) * (1 - np.exp(r)))
+
+        return height
+
+    # Returns the speed of the UGV for a given time after the brakeHeight
+    def decayedDescentVel(t):
+        # Velocity as a function of time (solved by wolfram symbolic diff eq solver):        
+        #   y'(t) = (g * m / c) * exp(r) + (g * m / c) + maxSpeed * exp(r)
+
+        #   Where:
+        #       g = -abs(gravity)
+        #       m = mass
+        #       c = (gear * hub / Kv)^2 / (totRes)
+        #       r = -c * t / m
+
+        c = (gear /(hub * Kv))**2 / (totalRes)        
+        r = -c * t / mass
+        gravity = -g
+        speed = -maxSpeed
+
+        speed = ((-gravity * mass / c) * np.exp(r) + (gravity * mass / c) 
+            + speed * np.exp(r))
+
+        return speed
+
+    # Height at which the max speed is achieved
+    speedHeight = speedHeightCalc(maxSpeed)
+
+    # If the brakeHeight is less than the speedHeight, the system follows 3 phases:
+    #   Phase 1: Free Fall
+    #   Phase 2: Perfect PWM to maintain max speed
+    #   Phase 3: Full Braked Descent to Ground
+    if (brakeHeight < speedHeight):
+        # Phase 1: Free Fall:
+        #   y = y0 - 0.5*g*t^2
+        tSpeed = np.sqrt(2*(dropHeight - speedHeight) / g)
+
+        # Phase 2: Perfect PWM to maintain the maxSpeed
+        #   y = y0 + maxSpeed * (t - tSpeed)
+        tBrake = tSpeed + (speedHeight - brakeHeight) / maxSpeed
+
+    # Otherwise, the vehicle skips combines phases 1 and 2 to reach the brake height 
+    #   before it reaches max speed:
+    else:
+        # Phase 1 & 2: Free Fall to BrakeHeight:
+        #   y = y0 - g*t^2
+        tBrake = np.sqrt(2*(dropHeight - brakeHeight) / g)
+
+        # For plotter to plot correctly
+        tSpeed = tBrake
+
+        # In this case, the speed that starts the exponential decay is no the max
+        #   speed of the vehicle but rather the speed achieved at the drop height
+        maxSpeed = g * tBrake
+
+    # Phase 3: Full Braked Descent to Ground (Exponential Decay of Speed)
+    # See decayedDescent for eqn
+        
+    # Quick helper function to return error of the decayed descent
+    def evalTime(t):
+        return abs(decayedDescentPos(t))
+
+    bnds = ((0, None),)
+    opt = minimize(evalTime, 1e-6, method = 'SLSQP', bounds = bnds, tol = 1e-8)
+    
+    tLand = tBrake + opt.x[0]
+
+    # If the input didn't ask for anything, output the time to hit the ground
+    if (flag == None):
+        return tLand        
+
+    # The input requested the landing speed
+    if (flag == 'landingSpeed'):
+        return decayedDescentVel(opt.x[0])
+
+    # The input requested the piecewise time values
+    if (flag == 'times'):
+        return (tSpeed, tBrake, tLand[0])
+
+    else:
+        tVals = np.linspace(0, tLand, 1000)
+        yVals = []
+        yPrimeVals = []
+
+        for t in tVals:
+            # Phase 1:
+            if (t < tSpeed):
+                yVals.append(dropHeight - 0.5*g*t**2)
+                yPrimeVals.append(-g*t)
+
+            # Phase 2:
+            elif (t < tBrake):
+                yVals.append(speedHeight - maxSpeed * (t-tSpeed))
+                yPrimeVals.append(-maxSpeed)
+
+            # Phase 3:
+            else:
+                yVals.append(decayedDescentPos(t - tBrake))
+                yPrimeVals.append(decayedDescentVel(t - tBrake))
+
+        return (tVals, yVals, yPrimeVals)
+
+#----------------------------------------------------------------------------------#
+
+# Calculates peak to peak electric properties of the motor and resistor
 def brakeElecProps(Kv, Ra, gear, hub, res, speed):
     # Resistance of motor and external resistor act in series
     totalRes = Ra + res
 
-    # Motor rotational speed at the control height
+    # Motor rotational speed at the given linear speed
     omega = gear * speed / hub
 
-    # Voltage generated at the control height
+    # Total voltage generated at the motor rotational speed
     volt = omega / Kv
 
-    # Power generated at the control height
-    power = volt**2 / totalRes
+    # volts is [motor voltage, resistor voltage]
+    volts = [volt * (Ra / (Ra + res)) * np.sqrt(2), 
+            volt * (res / (Ra+res)) * np.sqrt(2)]
 
     # Current generated at the control height
-    curr = volt / totalRes
+    curr = volt / totalRes * np.sqrt(2)
 
-    return [volt, curr, power]    
+    # Power generated at the control height
+    powers = [volts[0] * curr * 0.8, volts[1] * curr / 3]
+
+    return [volts, curr, powers]    
+
+#----------------------------------------------------------------------------------#
 
 # Calculates the fastest speed allowable and the lowest height to deploy the brake
+# TO DO: Make this work with the new variable hub model
 def brakeVals(Kv, Ra, gear, hub, res, maxElec):
     speed = 0
     minSpeed = 0
     # Twice the max speed achievable during the fall
     maxSpeed = 2 * np.sqrt(2 * dropHeight * g)
     convError = 1
+    lastValid = -1
 
     # Calculate the min height that the brake can be applied in order to not
     #   exceed the elctrical limits
@@ -198,19 +377,40 @@ def brakeVals(Kv, Ra, gear, hub, res, maxElec):
         speed = (minSpeed + maxSpeed)/2
         convError = abs(speed_old - speed)
 
-        [volt, curr, power] = brakeElecProps(Kv, Ra, gear, hub, res, speed)
+        [volts, curr, powers] = brakeElecProps(Kv, Ra, gear, hub, res, speed)
 
-        # If it is over the electrical limits, the speed is too fast
-        if (volt > maxElec[0] or curr > maxElec[1] or power > maxElec[2]):
+        # If it is over the motor electrical limits, the speed is too fast
+        # Voltage multiplied by sqrt(2) for peak to peak voltage
+        # Current multiplied by sqrt(2) for peak to peak current
+        # Power Multiplied by 2 for peak to peak power
+        if (volts[0] > maxElec[0][0] or curr > maxElec[0][1] 
+                or powers[0] > maxElec[0][2]):
+            maxSpeed = speed
+
+        # If it is over the MOSFET electrical limits, the speed is too fast
+        # Voltage multiplied by sqrt(2) for peak to peak voltage
+        # Current multiplied by sqrt(2) for peak to peak current
+        # Power Multiplied by 2 for peak to peak power
+        elif (volts[1] > maxElec[1][0] or curr > maxElec[1][1] 
+                or powers[1] > maxElec[1][2]):
+            lastValid = speed
             maxSpeed = speed
 
         else:
             minSpeed = speed
 
+    speed = lastValid
+
+    if (speed < landingSpeed):
+        return [speed, -1]
+
     height = 0
     minHeight = 0
-    maxHeight = 2 * dropHeight
+    maxHeight = dropHeight
     convError = 1
+    lastValid = -1
+
+    totalRes = Ra + res
 
     # Calculate the min height that the brake can be applied to reach the desired
     #   speed
@@ -221,18 +421,33 @@ def brakeVals(Kv, Ra, gear, hub, res, maxElec):
         
         convError = abs(height_old - height)
 
-        finalSpeed = -drop(height, speed, Kv, Ra, gear, hub, res)[2][-1]
+        finalSpeed = -analyticalDrop(height, speed, Kv, gear, hub, totalRes, 
+                    flag = 'landingSpeed')
+
+        finalSpeed = drop(height, speed, Kv, Ra, gear, hub, spoolWidth, res)[2][-1]
 
         # If the drop height slows down the UGV to within 0.5% of the desired speed by 
         #   the end, the height can be raised
         if (abs(finalSpeed - landingSpeed) < (0.005 * landingSpeed)):
+            lastValid = height
             maxHeight = height
         
         # Otherwise it is not enough braking distance
         else:
             minHeight = height
 
-    return [speed, height]
+    finalSpeed = -analyticalDrop(lastValid, speed, Kv, gear, hub, totalRes, 
+        flag = 'landingSpeed')
+
+    finalSpeed = drop(lastValid, speed, Kv, Ra, gear, hub, spoolWidth, res)[2][-1]
+
+    if (abs(finalSpeed - landingSpeed) > (0.005 * landingSpeed)):
+        return [speed, -1]
+
+    else:
+        return [speed, lastValid]
+
+#----------------------------------------------------------------------------------#
 
 # Returns the height that the given speed with be achieved
 # Will return a negative number
@@ -242,40 +457,121 @@ def speedHeightCalc(speed):
 
     return speedHeight
 
-def minimizeTime(Kv, Ra, gear, maxElec):
-    minHub = 0
-    maxHub = 0.17*0.0254*2
-    hub = 0
-    convError = 1
+#----------------------------------------------------------------------------------#
 
-    while (convError > 1e-5):
-        hub_old = hub
-        hub = (minHub + maxHub)/2
+# Returns the largest hub possible with the given configuration
+# TO DO: make this work with the variable hub model
+def largestHub(Kv, gear, totalRes, maxElec):
+    def evalHub(hub):
+       # Force of gravity
+        Fg = mass * g
 
-        print (hub)
+        # Power of gravity
+        Pg = Fg * landingSpeed
 
-        convError = abs(hub_old - hub)
+        # Motor speed at the given linear speed
+        omega = gear * landingSpeed / hub
 
-        res = resCalc(Kv, Ra, gear, hub, maxElec)
-        
-        print (res)
+        # Voltage produced by the motor
+        voltage = omega / Kv
 
-        if (res == -1):
-            # If the resistance is non-physical, reduce the size of the hub
-            maxHub = hub
+        # Power across equivalent resistance
+        Pr = voltage**2 / totalRes
+            
+        return abs(Pr - Pg)
 
+    bnds = ((1e-6, None),)
+    opt = minimize(evalHub, maxHub/2, method = 'L-BFGS-B', bounds = bnds, tol = 1e-6)
+
+    # If converged, return the result
+    if (opt.success):
+        return opt.x[0]
+
+    opt = minimize(evalHub, maxHub/2, method = 'TNC', bounds = bnds, tol = 1e-6)
+
+    # If converged, return the result
+    if (opt.success):
+        return opt.x[0]
+
+    opt = minimize(evalHub, maxHub/2, method = 'SLSQP', bounds = bnds, tol = 1e-6)
+
+    # If converged, return the result
+    if (opt.success):
+        return opt.x[0]
+    
+    # At this point all of the methods that allow for boundaries have been used.
+    #   The solution was not found
+    return -1
+
+#----------------------------------------------------------------------------------#
+
+# Returns the hub radius that minimizes the descent time within the given constraints
+#   This assumes that the hub is sized approriately such that at steady state with
+#       full break the speed equals the max allowable landing speed. This does not
+#       have to be the case as the system could be PWM'ed into disapating less power
+# TO DO: at the very least helper functions are broken due to the new variable hub
+#   model. Fix those first
+def minimizeTime(Kv, Ra, gear, res, maxElec):
+    maxHub = largestHub(Kv, gear, Ra + res, maxElec)
+    
+    # TO DO: Calculate a minimum hub size to stay within bounds
+
+    # A spool with a 0.125" radius is the minimum we can tolerate
+    if (maxHub < 0.125 * 0.0254):
+        return -1
+
+    bnds = ((0.125 * 0.0254, maxHub),)
+
+    def evalHub(hub):
         maxSpeed, brakeHeight = brakeVals(Kv, Ra, gear, hub, res, maxElec)
+        t = analyticalDrop(brakeHeight, maxSpeed, Kv, gear, hub, Ra + res)
+        return t
 
-        speedHeight = speedHeightCalc(maxSpeed)
+    opt = minimize(evalHub, maxHub/2, method = 'L-BFGS-B', bounds = bnds, tol = 1e-6)
 
-        # brakeHeight is the height that is required to continually brake from
-        # speedHeight is the height that it reaches the max falling speed and must
-        #   start the PWM pulses until the brakeHeight
-        # Shortest time will minimize the distance between these two
+    # If converged, return the result
+    if (opt.success):
+        return opt.x[0]
 
-        if (speedHeight > brakeHeight):
-            maxHub = hub
-        else:
-            minHub = hub
+    opt = minimize(evalHub, maxHub/2, method = 'TNC', bounds = bnds, tol = 1e-6)
 
-    return hub
+    # If converged, return the result
+    if (opt.success):
+        return opt.x[0]
+
+    opt = minimize(evalHub, maxHub/2, method = 'SLSQP', bounds = bnds, tol = 1e-6)
+
+    # If converged, return the result
+    if (opt.success):
+        return opt.x[0]
+    
+    # At this point all of the methods that allow for boundaries have been used.
+    #   The solution was not found
+    return -1
+
+#----------------------------------------------------------------------------------#
+
+# Returns the minimum time to descent for the given motor
+# This is basically useless
+def motorEvaluator(Kv, Ra, gear, res, maxElec):
+    hub = minimizeTime(Kv, Ra, gear, res, maxElec)
+
+    if (hub == -1):
+        print ('hub error')
+        return (-1, -1, np.inf)
+
+    maxSpeed, brakeHeight = brakeVals(Kv, Ra, gear, hub, res, maxElec)
+
+    print (maxSpeed, brakeHeight)
+
+    if (maxSpeed == -1 or brakeHeight == -1):
+        print ('brakeVal error')
+        return (-1, -1, np.inf)
+
+    t = analyticalDrop(brakeHeight, maxSpeed, Kv, gear, hub, Ra + res)
+
+    if (t == -1):
+        print ('drop error')
+        return (-1, -1, np.inf)
+    else:
+        return (hub, t)
