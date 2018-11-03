@@ -647,6 +647,9 @@ def cubicSplinePolygonCollisions(csx, csy, tVals, poly, segments=None):
 # TO DO: Don't use points that make the previously fixed splines collide again,
 #   and/or need to do slight optimization of intermediate waypoints
 
+# TO DO: Just set maxGuesses, not maxSolutions. Maybe even set a maxTime.
+#   More guesses = better so use all the alloted time.
+
 def monteCarloSearch(wpx, wpy, tVals, poly, circles, i, maxGuesses, maxSolutions):
     # Make a copy of the inputs so as to not destory them
     wpxNew = copy.copy(wpx)

@@ -35,7 +35,6 @@ def main():
     #t = optimizeParameterSpacing(wpxInit, wpyInit, t, arcLength)[0]
 
     #print (t)
-
     csx = CubicSpline(t, wpxInit)
     csy = CubicSpline(t, wpyInit)
 
