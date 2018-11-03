@@ -1,6 +1,4 @@
 <launch>
-	<!-- vim: set ft=xml noet : -->
-	<!-- example launch script for ArduPilotMega based FCU's -->
 
 	<arg name="fcu_url" default="udp://127.0.0.1:14551@" />
 	<arg name="gcs_url" default="" />
@@ -23,8 +21,8 @@
 		<arg name="respawn_mavros" default="$(arg respawn_mavros)" />
 	</include>
 
-	<node pkg="laki2_states" type="mav_datalink.py" name='mav_data' />
-	<node pkg="laki2_states" type="ardu_main.py" name='ardu_sm' output='screen'/>
+	<node pkg="laki2_sim" type="mav_datalink.py" name='mav_datalink' />
+	<node pkg="laki2_states" type="main.py" name='laki2_sm' output='screen'/>
 
 
 </launch>

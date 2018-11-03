@@ -11,7 +11,6 @@ echo "export PATH=/usr/lib/ccache:$PATH" >> ~/.bashrc
 ./waf configure
 ./waf copter
 
-
 ###IF USING A VIRTUAL MACHINE ###
 echo "export SVGA_VGPU10=0" >> ~/.bashrc
 source ~/.bashrc

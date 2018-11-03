@@ -12,6 +12,9 @@ from sensor_msgs.msg import NavSatFix
 
 import gps_converter as gps
 
+
+# DEPRECATED BY FLIGHT, ALL MISSION FUNCTIONALITY IS (HOPEFULLY) IN THE FLIGHT STATE ALREADY
+
 class WP:
 
 	def __init__(self, x, y, z):
