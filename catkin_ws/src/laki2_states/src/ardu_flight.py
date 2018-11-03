@@ -10,12 +10,11 @@ from nav_msgs.msg import Odometry
 from geometry_msgs.msg import PoseStamped, TwistStamped
 from sensor_msgs.msg import NavSatFix
 
-import gps_converter as gps
+import laki2_common.gps_converter as laki2_GPS
 
 class WP:
 
 	def __init__(self, x, y, z):
-
 		self.x = x
 		self.y = y
 		self.z = z
@@ -59,13 +58,13 @@ class Mission(smach.State):
 		smach.State.__init__(self,outcomes=['toSTANDBY','exit_flight'])
 
 	# uses methods from gps_converter to convert list of x,y,z to lat-longs
-	def convertMission(self,home, wp_list):
+	def convertToGPS(self, home, wp_list):
 
 		gps_list = []
 
 		for wp in wp_list:
 
-			lat,lon = gps.xy_to_gps(home.latitude, home.longitude, wp.x, wp.y)[0],gps.xy_to_gps(home.latitude, home.longitude, wp.x, wp.y)[1]
+			lat,lon = laki2_GPS.xy_to_gps(home.latitude, home.longitude, wp.x, wp.y)[0],laki2_GPS.xy_to_gps(home.latitude, home.longitude, wp.x, wp.y)[1]
 			coord = Coord(lat,lon, wp.z)
 
 			gps_list.append(coord)
@@ -81,7 +80,7 @@ class Mission(smach.State):
 		except rospy.ServiceException, e:
 			rospy.loginfo('Service call failed: %s' %e)
 
-	def createWaypointPush(self,gps_list):
+	def createMission(self,gps_list):
 
 		self.clearCurrentMission()
 		waypointList = WaypointList()
@@ -117,6 +116,7 @@ class Mission(smach.State):
 
 	def execute(self, userdata):
 	
+		#a hardcoded mission for testing
 		wp1 = WP(10,10,10)
 		wp2 = WP(20,20,10)
 		wp3 = WP(30,30,10)
@@ -127,10 +127,10 @@ class Mission(smach.State):
 
 		wp_list = [wp1,wp2,wp3,wp4,wp5]
 
-		self.createWaypointPush(self.convertMission(home, wp_list))
+		self.createMission(self.convertToGPS(home, wp_list))
 
 
-		try:	#service call to set mode to takeoff
+		try:	#service call to set mode to auto
 			setModeSrv = rospy.ServiceProxy("/mavros/set_mode", SetMode) #http://wiki.ros.org/mavros/CustomModes
 			setModeResponse = setModeSrv(0, 'AUTO')
 			rospy.loginfo(TextColors.OKGREEN + str(setModeResponse) + TextColors.ENDC)
