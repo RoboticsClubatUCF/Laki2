@@ -55,6 +55,7 @@ class TextColors:
 
 # SM State: MISSION
 # From: 	TAKEOFF
+# To:		EXIT FLIGHT_SM
 # Purpose: 	main flight state; builds the mission that is passed to ArduPilot, then waits for more missions
 class Mission(smach.State):
 	
