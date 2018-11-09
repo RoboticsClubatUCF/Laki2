@@ -1,7 +1,46 @@
+from __future__ import division
 import matplotlib.pyplot as plt
 import numpy as np
 from winchCalc import *
+from scipy import stats
 
+maxSpeed = 7
+brakeHeight = 7
+Kv = 1400
+Kv *= 2 * np.pi / 60
+hub = 0.17
+hub *= 0.0254
+spoolWidth = 3
+
+tVals, yVals, yPrimeVals, motorVolt, power, tensionVals = newDrop(brakeHeight, 
+        maxSpeed, Kv, hub, spoolWidth) 
+
+f, ((ax1, ax2, ax3), (ax4, ax5, ax6)) = plt.subplots(2, 3, sharey=False)
+
+print "Pos: ", yVals[-1]
+print "Speed: ", yPrimeVals[-1]
+print "Tension: ", tensionVals[-1]
+print "Voltage: ", motorVolt[-1]
+
+ax1.plot(tVals, yVals)
+ax1.set_title("Height")
+
+ax2.plot(tVals, yPrimeVals)
+ax2.set_title("Speed")
+
+ax3.plot(tVals, tensionVals)
+ax3.set_title("Tension")
+
+ax4.plot(tVals, motorVolt)
+ax4.set_title("Voltage")
+
+ax5.plot(tVals, power)
+ax5.set_title("Power")
+
+plt.show()
+
+
+"""
 # max Elec properties
 maxElec = [[4*4.2*0.9, 38.13*0.9, 610*0.9], [1000, 1000, 100*0.8]]
 
@@ -10,7 +49,7 @@ Kv = 2600
 Kv *= 2 * np.pi / 60
 
 # Motor resistance (armature resistance) in omhs
-Ra = 0.056 * 1.1
+Ra = 0.056
 
 # Gear Ratio (Motor : Winch)
 gear = 2
@@ -22,6 +61,7 @@ res = resistor + mosfet
 # hub, res, t = motorEvaluator(Kv, Ra, gear, maxElec)
 
 #print (hub, res)
+"""
 
 """
 totalRes = Ra + res
@@ -29,15 +69,15 @@ totalRes = Ra + res
 hub = largestHub(Kv, gear, totalRes, maxElec)
 
 print ("hub", hub)
-"""
+
 hub = 0.3 * 0.0254
 spoolWidth = 0.1524 / 2
 
-(tVals, yVals, yPrimeVals, resVolt, motorVolt, sysCurr, rmsPower, resPower, motorPower, tensionVals) = drop(6, 6.5, Kv, Ra, gear, hub, spoolWidth, res)
+(tVals, yVals, yPrimeVals, resVolt, motorVolt, sysCurr, rmsPower, resPower, motorPower, tensionVals) = drop(5, 10, Kv, Ra, gear, hub, spoolWidth, res)
 
 f, ((ax1, ax2, ax3), (ax4, ax5, ax6), (ax7, ax8, ax9)) = plt.subplots(3, 3, sharey=False)
 
-print ('time: ', tVals[-1] - 5.339999999999931)
+print ('time: ', tVals[-4])
 print ('speed: ', yPrimeVals[-7] - 4.056322225893055)
 # print ('max motor voltage: ', max(motorVolt) - 1.793939356362689)
 # print ('max res voltage: ', max(resVolt)*resistor/res - 6.40692627272389)
@@ -47,9 +87,8 @@ print ('max current: ', max(sysCurr) - 32.03463136361945)
 print ('max res power: ', max(resPower)*resistor/res - 68.41450710686605)
 print ('max mosfet power: ', max(resPower)*mosfet/res - 3.078652819808972)
 # print ('max motorPower: ', max(motorPower) - 45.974548775813986)
-# print ('max tension: ', max(tensionVals) - 11.20870196957418)
+print ('max tension: ', max(tensionVals))
 
-"""
 ax1.set_title('Height')
 ax1.plot(tVals, yVals)
 
@@ -78,9 +117,7 @@ ax9.set_title('motorPower')
 ax9.plot(tVals, motorPower)
 
 plt.show()
-"""
 
-"""
 maxSpeed, brakeHeight = brakeVals(Kv, Ra, gear, 0.00458410190779233, 0.2+res, maxElec)
 print (brakeHeight)
 
@@ -93,9 +130,7 @@ print (tVals[-1])
 
 plt.plot(tVals, yVals)
 plt.show()
-"""
 
-"""
 externRes = np.linspace(0, 0.35, 1000)
 hub = []
 xVals = []

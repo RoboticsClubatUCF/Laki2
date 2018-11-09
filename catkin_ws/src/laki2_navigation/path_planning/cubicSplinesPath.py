@@ -723,7 +723,7 @@ def monteCarloSearch(wpx, wpy, tVals, poly, circles, i, maxGuesses, maxSolutions
             continue
 
         solutions.append(randPt)
-        print (len(solutions))
+        print len(solutions)
 
     return solutions
 
@@ -783,7 +783,7 @@ def fixPolygonIntersections(wpx, wpy, tVals, poly, circles):
             tNew.insert(i+1, collisions[0][1])
 
             solutions = monteCarloSearch(wpxNew, wpyNew, tNew, poly, circles, i, 3000, 20)
-            print ("Found")
+            print "Found"
 
             # TO DO: Evaulate all points in solutions to pick the best
             #   Do that here instead of just taking the first solution
@@ -865,7 +865,7 @@ def optimizeParameterSpacing(wpx, wpy, tVals, costFunc):
 
         # Return some cost of the spline
         length = costFunc(csx, csy, csz, spacing)
-        print (length)
+        print length
         return length
 
     #--------------------------------------------------------------------------#

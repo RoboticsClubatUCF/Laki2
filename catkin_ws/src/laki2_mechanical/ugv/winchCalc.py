@@ -1,3 +1,4 @@
+from __future__ import division
 import numpy as np
 from scipy import integrate
 from scipy.optimize import minimize
@@ -25,58 +26,100 @@ landingSpeed = 5.5
 # Max motor hub radius
 maxHub =  3 * 0.0254
 
-# TO DO: this is not currently done properly. Make functions use this as an input 
-#   from another souce, not as a global variable
-spoolWidth = 0.1524 / 2
-
 #----------------------------------------------------------------------------------#
 
-"""
-# This is basically useless
-# maxElec is a list of [maxVoltage, maxCurrent, maxPower]
-def resCalc(Kv, Ra, gear, hub, maxElec):
-    # Force of gravity
-    Fg = mass * g
+def newDrop(brakeHeight, maxSpeed, Kv, hub, spoolWidth, gear = 1):
+    # Calculates the voltage, current, power, and force from the motors
+    # Inputs speed in m/s
+    # Outputs [voltage, current, power, force]
+    def motorVals(speed, height):
+        if (speed == 0):
+            return [0, 0, 0]
 
-    # Power of gravity
-    Pg = Fg * landingSpeed
+        if ((height > brakeHeight) and (abs(speed) < maxSpeed)) or (abs(speed) < 3):
+            return [0, 0, 0]
 
-    # Motor speed at the given linear speed
-    omega = gear * landingSpeed / hub
+        # Motor speed in rad/s: gear-ratio * linear-velocity / hub-radius
+        omega = gear * abs(speed) / effHub(hub, height, spoolWidth)
 
-    # Voltage produced by the motor
-    voltage = omega / Kv
+        # Voltage produced by the motor
+        voltage = omega / Kv
 
-    # Returns the net power into the UGV with the given external resistance and
-    #   motor hub size
-    # TO DO: the max power of the resistor is 3W (voltage divider also)
+        # Power produced by the motor: V^2 / R
+        power = 3 * (20.88 * voltage - 42.1)
 
-    def resEval(externRes):
-        # Resistors in series
-        totalRes = Ra + externRes
+        # Max power the motor can handle
+        if (power > 113.4*0.9):
+            power = 113.4*0.9
 
-        # Power across equivalent resistance
-        Pr = voltage**2 / totalRes
-        
-        return abs(Pr - Pg)
+        # Force from motor: power = force * linear-velocity
+        force = power / abs(speed)
 
-    bnds = ((0, None),)
-    opt = minimize(resEval, Ra, method = 'SLSQP', bounds = bnds, tol = 1e-8)
+        return [voltage, power, force]
 
-    # If the minimizer optimized to a garbage value don't return it
-    if (resEval(opt.x[0]) > 1e-5):
-        return -1
+    # Update function for IVP solver
+    # my" = Fm - Fg
+    # Ground is 0, up is +
+    # Inputs:
+    #   U = [y, y']
+    #   t is unused
+    # Outputs:
+    #   [y', y"]
+    def dU_dt(t, U):
+        # Force of gravity
+        Fg = mass * g
 
-    # If the optimizer was sucessful return the resistance value
-    if (opt.success):
-        return opt.x[0]
-    
-    # Otherwise return a non-physical value
-    else:
-        return -1
-"""
+        # Pull force from the motor from the helper function
+        motorForce = motorVals(U[1], U[0])[2]
 
-#----------------------------------------------------------------------------------#
+        print U[1], motorForce
+
+        # Net Force acting on the motor
+        netForce = motorForce - Fg
+
+        # Net acceleration on the UGV (y double prime)
+        yDub = netForce / mass
+
+        # Return [y', y"]
+        return [U[1], yDub]
+
+    # Dropped from the drop height with 0 initial velocity
+    U = [dropHeight, 0]
+    ts = [0, 0]
+
+    # Make a list to populate with (t, y)
+    tVals = []
+    yVals = []
+    yPrimeVals = []
+    motorVolt = []
+    power = []
+    tensionVals = []
+
+    # While the vehicle is not on the ground, continue to iterate
+    while (U[0] > 0):
+        # Take another time step
+        ts = [ts[1], ts[1] + 1e-2]
+
+        # Solve for the next time step
+        intermediate = integrate.solve_ivp(dU_dt, ts, U)
+
+        volt, powerVal, force = motorVals(U[1], U[0])
+
+        print "power: ", powerVal
+
+        tensionVals.append((dU_dt(0, U)[1] + g) / mass)
+        U = [intermediate.y[0][-1], intermediate.y[1][-1]]
+
+        tVals.append(ts[1])
+        yVals.append(U[0])
+        yPrimeVals.append(-U[1])
+
+        motorVolt.append(volt)
+
+        power.append(powerVal)
+
+    return (tVals, yVals, yPrimeVals, motorVolt, power, tensionVals)
+
 
 # Estimates the size of a given hub at a given height due to the wrapping of the 
 #   tether
@@ -102,10 +145,12 @@ def effHub(hub, height, spoolWidth):
 
     return effHub
 
+#----------------------------------------------------------------------------------#
+
 # Returns lists for time, y, y', and tension in the tether
 #   of a vehicle dropping in 0 air friction from the drop height to the ground
 # Solve numerically
-def drop(brakeHeight, maxSpeed, Kv, Ra, gear, hub, spoolWidth, res):
+def drop(brakeHeight, maxSpeed, Kv, hub, spoolWidth, res):
     # Calculates the voltage, current, power, and force from the motors
     # Inputs speed in m/s
     # Outputs [voltage, current, power, force]
@@ -205,7 +250,8 @@ def drop(brakeHeight, maxSpeed, Kv, Ra, gear, hub, spoolWidth, res):
         power = motorVals(U[1], U[0])[2]
         rmsPower.append(power)
 
-    return (tVals, yVals, yPrimeVals, resVolt, motorVolt, sysCurr, rmsPower, resPower, motorPower, tensionVals)
+    return (tVals, yVals, yPrimeVals, resVolt, motorVolt, sysCurr, rmsPower, 
+            resPower, motorPower, tensionVals)
 
 #----------------------------------------------------------------------------------#
 
@@ -557,21 +603,21 @@ def motorEvaluator(Kv, Ra, gear, res, maxElec):
     hub = minimizeTime(Kv, Ra, gear, res, maxElec)
 
     if (hub == -1):
-        print ('hub error')
+        print 'hub error'
         return (-1, -1, np.inf)
 
     maxSpeed, brakeHeight = brakeVals(Kv, Ra, gear, hub, res, maxElec)
 
-    print (maxSpeed, brakeHeight)
+    print maxSpeed, brakeHeight
 
     if (maxSpeed == -1 or brakeHeight == -1):
-        print ('brakeVal error')
+        print 'brakeVal error'
         return (-1, -1, np.inf)
 
     t = analyticalDrop(brakeHeight, maxSpeed, Kv, gear, hub, Ra + res)
 
     if (t == -1):
-        print ('drop error')
+        print 'drop error'
         return (-1, -1, np.inf)
     else:
         return (hub, t)
