@@ -8,7 +8,8 @@ from nav_msgs.msg import Odometry
 from geometry_msgs.msg import PoseStamped, TwistStamped
 
 from laki2_common import *
-from laki2_msg import *
+import laki2_common.gps_converter as laki2_GPS
+from laki2_msg.msg import MissionPath, FlightStatus, Coordinate, MissionCoords
 
 # simple Waypoint (WP) class to hold (x,y,z)s 
 # used in MISSION state to build the mission
@@ -47,12 +48,21 @@ def convertToGPS(home, wp_list):
 
 def buildMessage(gps_list):
 
-	mission = 
+	mission = MissionCoords()
+	coord = Coordinate()
 
-	for coord in gps_list:
+	for gps in gps_list:
 
-		
+		coord.latitude = gps.latitude
+		coord.longitude = gps.longitude
+		coord.altitude = gps.altitude
 
+		mission.coords.append(coord)
+
+
+	# mission.coords = gps_list
+
+	return mission	
 
 
 def MissionTest():
@@ -71,5 +81,24 @@ def MissionTest():
 
 	gps_list = convertToGPS(home, wp_list)
 
+	mission = buildMessage(gps_list)
+
+	mission_pub = rospy.Publisher('/laki2/mission', MissionCoords, queue_size=10)
+
+	while not rospy.is_shutdown():
+
+		mission_pub.publish(mission)
 
 
+
+def main():
+
+	rospy.init_node('mission_test', anonymous=True)
+
+	# mission_pub = rospy.Publisher('/laki2/mission', MissionPath, queue_size=10)
+
+	MissionTest()
+
+
+if __name__ == '__main__':
+    main()

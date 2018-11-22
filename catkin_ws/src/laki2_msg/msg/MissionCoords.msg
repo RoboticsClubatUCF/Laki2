@@ -1,0 +1,1 @@
+laki2_msg/Coordinate[] coords
