@@ -7,6 +7,8 @@ from mavros_msgs.msg import State, RCIn
 from nav_msgs.msg import Odometry
 from geometry_msgs.msg import PoseStamped, TwistStamped
 
+from laki2_common import TextColors
+
 import flight
 
 ''' the main states for Laki2's state machine (SMACH)'''
@@ -15,8 +17,8 @@ import flight
 rcNum = None
 current_state = None
 current_pos = None
-target = None
-gotTarget = False
+# target = None
+# gotTarget = False
 
 # callback that reads the /mavros/state topic
 def getMavrosState(data):
@@ -34,30 +36,18 @@ def getRCChannels(data):
 
 # callback that reads the /laki2/flight_target/local topic
 # flight_target/local is ideally published by the path-planning system to guide Laki2 
-def getLocalTarget(data):
+# def getLocalTarget(data):
 
-	global target
-	global gotTarget
-	gotTarget = True
-	target = data
+# 	global target
+# 	global gotTarget
+# 	gotTarget = True
+# 	target = data
 
 # reads current position from /mavros/local_position/odom
 def getCurrentPosition(data):
 
 	global current_pos
 	current_pos = data	
-
-#totally unnecessary class to make terminal output pretty
-class TextColors:
-    HEADER = '\033[95m'
-    OKBLUE = '\033[94m'
-    OKGREEN = '\033[92m'
-    WARNING = '\033[93m'
-    FAIL = '\033[91m'
-    ENDC = '\033[0m'
-    BOLD = '\033[1m'
-    UNDERLINE = '\033[4m'
-
 
 # SM State: PREFLIGHT
 # From: 	NONE
@@ -75,6 +65,7 @@ class Preflight(smach.State):
 
 		rate = rospy.Rate(30) #runs following loop at 30hz
 
+		#flags to stop constant output of warning messages
 		targetFlag = True
 		readyFlag = True
 		noOdomFlag = True
@@ -117,10 +108,8 @@ class Preflight(smach.State):
 
 # SM State: TAKEOFF
 # From: 	PREFLIGHT
-# Purpose:	
+# Purpose:	to takeoff from the ground to a hardcoded height of ten meters
 class Takeoff(smach.State):
-
-	'''uses built-in AUTO.TAKEOFF to lift to a parameter-set altitude (2.5m by default)'''
 
 	def __init__(self):
 		smach.State.__init__(self, outcomes=['exit','toPREFLIGHT','toFLIGHT_SM'])
@@ -142,9 +131,6 @@ class Takeoff(smach.State):
 			rospy.loginfo('Service call failed: %s' %e)	
 
 	def execute(self, userdata):
-
-		# self.getTakeoffAlt()
-		# rospy.loginfo(self.targetAlt)
 
 		rate = rospy.Rate(30)
 
@@ -171,7 +157,7 @@ class Takeoff(smach.State):
 				except rospy.ServiceException, e:
 					rospy.loginfo(TextColors.FAIL + 'Service call failed: %s' %e + TextColors.ENDC)
 
-			# arming Laki2, must be armed before takeoff (works for PX4 and ARDUPILOT)
+			# arming Laki2, must be armed before takeoff (PX4 and ARDUPILOT)
 			if ((not current_state.armed) and guided): 
 				armCommandSrv = rospy.ServiceProxy("/mavros/cmd/arming", CommandBool)		
 				armResponse = armCommandSrv(True)
@@ -199,7 +185,7 @@ def main():
 
 	rospy.Subscriber("/mavros/state", State, getMavrosState) #provides mavros state (connected, flight mode, etc.)
 	rospy.Subscriber("/mavros/rc/in", RCIn, getRCChannels) #subscribe to mavros topic for RC Data
-	rospy.Subscriber("/laki2/flight_target/local", PoseStamped, getLocalTarget) #tells where we're going
+	# rospy.Subscriber("/laki2/flight_target/local", PoseStamped, getLocalTarget) #tells where we're going
 	rospy.Subscriber('/mavros/local_position/odom', Odometry, getCurrentPosition) #gives current, continuous position
 
 	sm = smach.StateMachine(outcomes=['exit_sm'])
@@ -209,6 +195,7 @@ def main():
 
 		smach.StateMachine.add('PREFLIGHT', Preflight(), transitions={'toTAKEOFF':'TAKEOFF','exit':'exit_sm'})
 		smach.StateMachine.add('TAKEOFF', Takeoff(), transitions={'toPREFLIGHT': 'PREFLIGHT','toFLIGHT_SM':'FLIGHT_SM','exit':'exit_sm'})
+		# smach.StateMachine.add('LAND', Land(), transitions={'exit':'exit_sm'})
 
 		flight_sm = smach.StateMachine(outcomes=['exit_flight_sm'])
 
