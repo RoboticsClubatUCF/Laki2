@@ -52,6 +52,7 @@
       <velocity_decay/>
       <self_collide>0</self_collide>
     </link>
+    
     <link name='/imu_link'>
       <pose frame=''>0 0 0 0 -0 0</pose>
       <inertial>
