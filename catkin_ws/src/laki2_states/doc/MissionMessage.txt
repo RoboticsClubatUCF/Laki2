@@ -1,0 +1,137 @@
+# Waypoint.msg
+#
+# ROS representation of MAVLink MISSION_ITEM
+# See mavlink documentation
+
+
+
+# see enum MAV_FRAME
+uint8 frame
+uint8 FRAME_GLOBAL = 0
+uint8 FRAME_LOCAL_NED = 1
+uint8 FRAME_MISSION = 2
+uint8 FRAME_GLOBAL_REL_ALT = 3
+uint8 FRAME_LOCAL_ENU = 4
+
+# see enum MAV_CMD and CommandCode.msg (https://github.com/mavlink/mavros/blob/master/mavros_msgs/msg/CommandCode.msg)
+uint16 command
+
+bool is_current
+bool autocontinue
+# meaning of this params described in enum MAV_CMD
+float32 param1
+float32 param2
+float32 param3
+float32 param4
+float64 x_lat
+float64 y_long
+float64 z_alt
+
+
+# MAV_CMD_MISSION
+uint16 MISSION_START = 300 # start running a mission
+
+# MAV_CMD_NAV
+uint16 NAV_WAYPOINT = 16                           # Navigate to waypoint.
+uint16 NAV_LOITER_UNLIM = 17                       # Loiter around this waypoint an unlimited amount of time
+uint16 NAV_LOITER_TURNS = 18                       # Loiter around this waypoint for X turns
+uint16 NAV_LOITER_TIME = 19                        # Loiter around this waypoint for X seconds
+uint16 NAV_RETURN_TO_LAUNCH = 20                   # Return to launch location
+uint16 NAV_LAND = 21                               # Land at location
+uint16 NAV_TAKEOFF = 22                            # Takeoff from ground / hand
+uint16 NAV_LAND_LOCAL = 23                         # Land at local position (local frame only)
+uint16 NAV_TAKEOFF_LOCAL = 24                      # Takeoff from local position (local frame only)
+uint16 NAV_FOLLOW = 25                             # Vehicle following, i.e. this waypoint represents the position of a moving vehicle
+uint16 NAV_CONTINUE_AND_CHANGE_ALT = 30            # Continue on the current course and climb/descend to specified altitude.  When the altitude is reached continue to the next command (i.e., don't proceed to the next command until the desired altitude is reached.
+uint16 NAV_LOITER_TO_ALT = 31                      # Begin loiter at the specified Latitude and Longitude.  If Lat=Lon=0, then loiter at the current position.  Don't consider the navigation command complete (don't leave loiter) until the altitude has been reached.  Additionally, if the Heading Required parameter is non-zero the  aircraft will not leave the loiter until heading toward the next waypoint.
+uint16 NAV_PATHPLANNING = 81                       # Control autonomous path planning on the MAV.
+uint16 NAV_SPLINE_WAYPOINT = 82                    # Navigate to waypoint using a spline path.
+uint16 NAV_VTOL_TAKEOFF = 84                       # Takeoff from ground using VTOL mode
+uint16 NAV_VTOL_LAND = 85                          # Land using VTOL mode
+uint16 NAV_GUIDED_ENABLE = 92                      # hand control over to an external controller
+uint16 NAV_DELAY = 93                              # Delay the next navigation command a number of seconds or until a specified time
+uint16 NAV_PAYLOAD_PLACE = 94                      # Descend and place payload.  Vehicle descends until it detects a hanging payload has reached the ground, the gripper is opened to release the payload
+uint16 NAV_LAST = 95                               # NOP - This command is only used to mark the upper limit of the NAV/ACTION commands in the enumeration
+uint16 NAV_SET_YAW_SPEED = 213                     # Sets a desired vehicle turn angle and speed change
+uint16 NAV_FENCE_RETURN_POINT = 5000 # Fence return point. There can only be one fence return point.
+
+<enum name="MAV_FRAME">
+      <entry value="0" name="MAV_FRAME_GLOBAL">
+        <description>Global coordinate frame, WGS84 coordinate system. First value / x: latitude, second value / y: longitude, third value / z: positive altitude over mean sea level (MSL).</description>
+      </entry>
+      <entry value="1" name="MAV_FRAME_LOCAL_NED">
+        <description>Local coordinate frame, Z-down (x: north, y: east, z: down).</description>
+      </entry>
+      <entry value="2" name="MAV_FRAME_MISSION">
+        <description>NOT a coordinate frame, indicates a mission command.</description>
+      </entry>
+      <entry value="3" name="MAV_FRAME_GLOBAL_RELATIVE_ALT">
+        <description>Global coordinate frame, WGS84 coordinate system, relative altitude over ground with respect to the home position. First value / x: latitude, second value / y: longitude, third value / z: positive altitude with 0 being at the altitude of the home location.</description>
+      </entry>
+      <entry value="4" name="MAV_FRAME_LOCAL_ENU">
+        <description>Local coordinate frame, Z-up (x: east, y: north, z: up).</description>
+      </entry>
+      <entry value="5" name="MAV_FRAME_GLOBAL_INT">
+        <description>Global coordinate frame, WGS84 coordinate system. First value / x: latitude in degrees*1.0e-7, second value / y: longitude in degrees*1.0e-7, third value / z: positive altitude over mean sea level (MSL).</description>
+      </entry>
+      <entry value="6" name="MAV_FRAME_GLOBAL_RELATIVE_ALT_INT">
+        <description>Global coordinate frame, WGS84 coordinate system, relative altitude over ground with respect to the home position. First value / x: latitude in degrees*10e-7, second value / y: longitude in degrees*10e-7, third value / z: positive altitude with 0 being at the altitude of the home location.</description>
+      </entry>
+      <entry value="7" name="MAV_FRAME_LOCAL_OFFSET_NED">
+        <description>Offset to the current local frame. Anything expressed in this frame should be added to the current local frame position.</description>
+      </entry>
+      <entry value="8" name="MAV_FRAME_BODY_NED">
+        <description>Setpoint in body NED frame. This makes sense if all position control is externalized - e.g. useful to command 2 m/s^2 acceleration to the right.</description>
+      </entry>
+      <entry value="9" name="MAV_FRAME_BODY_OFFSET_NED">
+        <description>Offset in body NED frame. This makes sense if adding setpoints to the current flight path, to avoid an obstacle - e.g. useful to command 2 m/s^2 acceleration to the east.</description>
+      </entry>
+      <entry value="10" name="MAV_FRAME_GLOBAL_TERRAIN_ALT">
+        <description>Global coordinate frame with above terrain level altitude. WGS84 coordinate system, relative altitude over terrain with respect to the waypoint coordinate. First value / x: latitude in degrees, second value / y: longitude in degrees, third value / z: positive altitude in meters with 0 being at ground level in terrain model.</description>
+      </entry>
+      <entry value="11" name="MAV_FRAME_GLOBAL_TERRAIN_ALT_INT">
+        <description>Global coordinate frame with above terrain level altitude. WGS84 coordinate system, relative altitude over terrain with respect to the waypoint coordinate. First value / x: latitude in degrees*10e-7, second value / y: longitude in degrees*10e-7, third value / z: positive altitude in meters with 0 being at ground level in terrain model.</description>
+      </entry>
+      <entry value="12" name="MAV_FRAME_BODY_FRD">
+        <description>Body fixed frame of reference, Z-down (x: forward, y: right, z: down).</description>
+      </entry>
+      <entry value="13" name="MAV_FRAME_BODY_FLU">
+        <description>Body fixed frame of reference, Z-up (x: forward, y: left, z: up).</description>
+      </entry>
+      <entry value="14" name="MAV_FRAME_MOCAP_NED">
+        <description>Odometry local coordinate frame of data given by a motion capture system, Z-down (x: north, y: east, z: down).</description>
+      </entry>
+      <entry value="15" name="MAV_FRAME_MOCAP_ENU">
+        <description>Odometry local coordinate frame of data given by a motion capture system, Z-up (x: east, y: north, z: up).</description>
+      </entry>
+      <entry value="16" name="MAV_FRAME_VISION_NED">
+        <description>Odometry local coordinate frame of data given by a vision estimation system, Z-down (x: north, y: east, z: down).</description>
+      </entry>
+      <entry value="17" name="MAV_FRAME_VISION_ENU">
+        <description>Odometry local coordinate frame of data given by a vision estimation system, Z-up (x: east, y: north, z: up).</description>
+      </entry>
+      <entry value="18" name="MAV_FRAME_ESTIM_NED">
+        <description>Odometry local coordinate frame of data given by an estimator running onboard the vehicle, Z-down (x: north, y: east, z: down).</description>
+      </entry>
+      <entry value="19" name="MAV_FRAME_ESTIM_ENU">
+        <description>Odometry local coordinate frame of data given by an estimator running onboard the vehicle, Z-up (x: east, y: noth, z: up).</description>
+      </entry>
+</enum>
+
+
+
+
+rosservice call /mavros/mission/push "start_index: 0 
+waypoints:
+- {frame: 3, command: 22, is_current: true, autocontinue: true, param1: 10.0, param2: 0.0,
+  param3: 0.0, param4: 0.0, x_lat: -35.36, y_long: 149.165, z_alt: 10.0}
+- {frame: 3, command: 16, is_current: false, autocontinue: true, param1: 10.0, param2: 0.0,
+  param3: 0.0, param4: 0.0, x_lat: -35.36, y_long: 150, z_alt: 10.0} " 
+
+
+SETTING SPEED:
+	ardupilot param WPNAV_SPEED (unit is cm/s, default is 500cm/s -> 5m/s)  
+
+Flipping start switch:
+
+	rostopic pub -l /mavros/rc/in mavros_msgs/RCIn {'channels: [0,0,0,1500,0,0,2113,0,0,0,0,0,0,0,0,0,0,0]'}

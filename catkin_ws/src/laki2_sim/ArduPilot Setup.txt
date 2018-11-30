@@ -1,0 +1,38 @@
+git clone https://github.com/ArduPilot/ardupilot
+cd ardupilot
+git submodule update --init --recursive
+
+Tools/scripts/install-prereqs-ubuntu.sh -y
+. ~/.bashrc
+
+echo "export PATH=$PATH:$HOME/ardupilot/Tools/autotest" >> ~/.bashrc
+echo "export PATH=/usr/lib/ccache:$PATH" >> ~/.bashrc
+
+./waf configure
+./waf copter
+
+
+###IF USING A VIRTUAL MACHINE ###
+echo "export SVGA_VGPU10=0" >> ~/.bashrc
+source ~/.bashrc
+
+cd 
+git clone https://github.com/SwiftGust/ardupilot_gazebo
+cd ardupilot_gazebo
+mkdir build
+cd build
+cmake ..
+make -j4
+sudo make install
+
+echo 'export GAZEBO_MODEL_PATH=~/Laki2/catkin_ws/src/laki2_sim/models:~/ardupilot_gazebo/gazebo_models:${GAZEBO_MODEL_PATH}' >> ~/.bashrc
+echo "export GAZEBO_RESOURCE_PATH=~/ardupilot_gazebo/gazebo_worlds:~/Laki2/catkin_ws/src/laki2_sim/worlds:${GAZEBO_RESOURCE_PATH}
+source ~/.bashrc
+
+#TO RUN SIMULATOR ###
+sim_vehicle.py -v ArduCopter -f gazebo-iris
+gazebo --verbose laki2_ardu.world
+roslaunch laki2_sim apm.launch
+
+
+### FOR TROUBLESHOOTING: https://github.com/SwiftGust/ardupilot_gazebo#troubleshooting ###
