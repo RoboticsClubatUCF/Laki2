@@ -4,7 +4,12 @@ from sensor_msgs.msg import NavSatFix
 from nav_msgs.msg import Odometry
 # for getGpsImage:
 import Image, urllib, StringIO
+# from math import log, exp, tan, atan, pi, ceil
+# import interop
+# from Server import Server # for interfacing with Server
 
+# Server = Server()
+# Server.initializeROSNodes()
 # variables updated by ROS (initialized here to ensure global access)
 rosGpsData = None
 latitude = None
@@ -111,6 +116,10 @@ def update():
 # 	root.after(100, my_after)
 # you must call the method at least once to get it started, it will continue on its own afterwards
 #my_after()
+
+
+# converts gps coordinates to pixel coordinates
+#def GpsToPixel(gps):
 	
 # creates a red line between given gps coordinates
 # TKinter canvas defines pixels with origin on the top-left:
@@ -250,6 +259,9 @@ def removeLastCircle():
 
 # gets the gps image from google with specified latitude and longitude coords
 def getGpsImage(upperLeftCoords, lowerRightCoords):
+	#print("getting GPS image for the following coords:")
+	#print upperLeftCoords
+	#print lowerRightCoords
 	EARTH_RADIUS = 6378137
 	EQUATOR_CIRCUMFERENCE = 2 * pi * EARTH_RADIUS
 	INITIAL_RESOLUTION = EQUATOR_CIRCUMFERENCE / 256.0
@@ -278,6 +290,9 @@ def getGpsImage(upperLeftCoords, lowerRightCoords):
 	# Put GPS coordinates here to get satellite image from google
 	upperleft = upperLeftCoords
 	lowerright= lowerRightCoords
+	
+	#upperleft =  '28.587011, -81.200438'  
+	#lowerright = '28.582682, -81.195694'
 
 	zoom = 18   # be careful not to get too many images!
 
@@ -339,6 +354,9 @@ def makeCircle(centroid, radius, color):
 
 	TL = [lon-radius, lat+radius] # top left coordinates
 	BR = [lon+radius, lat-radius] # top right coordinates
+
+	#TL = [centroid[1]-radius, centroid[0]+radius] # top left coordinates
+	#BR = [centroid[1]+radius, centroid[0]-radius] # top right coordinates
 
 	#id = C.create_oval(x0, y0, x1, y1, option, ...)
 	global canvas
@@ -456,12 +474,15 @@ def clickCallback_addObstacle(event):
 	# radius = gpsToPixel(float(obstacle_radius_input.get()), 'lat')
 	radius = 20
 	height = float(obstacle_height_input.get())
+	#print radius
 
 	if odlcPosition_circle != None:
 		pixel = (event.y, event.x)
+		#print "changing emergent object"
 		lon = pixelToGps(pixel, "x")
 		lat = pixelToGps(pixel, "y")
 
+		#print "changing odlc"
 		Server.addObstacle((lat,lon), radius, height)
 		obstacles_circles.append(makeCircle((lat,lon), radius, "red"))
 
@@ -618,11 +639,19 @@ def main():
 
 	obstacle_height_input.set("New Obstacle Height")
 	obstacle_radius_input.set("New Obstacle Radius")
+
+	# create a frame and tell it which Tkinter object we are using
+	# frame = Frame(root, borderwidth=1000)
+	
 	
 	# default gps for simulator:
 	# latitude: 47.3977417
 	# longitude: 8.5455941
 	
+	# str_corners = getCorners(1)
+	
+	#getGpsImage(str_corners[0], str_corners[3])
+
 	# get image data (gps satellite data)
 	path = "ANTIALIAS.png"
 	img = PhotoImage(file=path) # used for Tkinter canvas object
@@ -643,6 +672,9 @@ def main():
 	ext = ".png"
 
 	im5.save("ANTIALIAS" + ext)
+
+	# #print "height = " + str(pixel_height)
+	# #print "width = " + str(pixel_width)
 
 	#display an image from file path
 	canvas = Canvas(root, width = pixel_width, height = pixel_height)
@@ -718,6 +750,94 @@ def main():
 
 	et_obstacleRadius = Entry(root, textvariable=obstacle_radius_input, width=22)
 	et_obstacleRadius.grid(row=rosRows+8, column = second_col)
+	
+	# corners = getCorners(0)
+
+	# Bx = corners[1][1]
+	# By = corners[1][0]
+	# Ax = corners[0][1]
+	# Ay = corners[2][0]
+
+	# missions = Server.get_missions()
+
+	# #TODO: generalize the following for loops:
+
+	# # list of waypoints outlc
+	# flyzone_waypoints = missions[0].fly_zones[0].boundary_pts
+
+	# # Draw all the flyzone waypoints that have been given by the server
+	# for i in range(0, len(flyzone_waypoints)):
+	# 	lat = flyzone_waypoints[i].latitude
+	# 	lon = flyzone_waypoints[i].longitude
+
+	# 	pix_lat = gpsToPixel(lat, "lat")
+	# 	pix_lon = gpsToPixel(lon, "lon")
+	# 	#makeCircle((pix_lat, pix_lon), 20)
+		
+	# 	# make a red circle at every flyzone waypoint
+	# 	# flyzone_circles.append(makeCircle((lat, lon), 20, 'red'))
+
+	# 	# draw lines from waypoint to waypoint, connecting the last waypoint to the first one
+	# 	if(i != len(flyzone_waypoints)-1):
+	# 		flyzone_lines.append(createLine((lat, lon), (flyzone_waypoints[i+1].latitude, flyzone_waypoints[i+1].longitude), "red"))
+	# 	else:
+	# 		flyzone_lines.append(createLine((lat, lon), (flyzone_waypoints[0].latitude, flyzone_waypoints[0].longitude), "red"))
+
+
+	# search_grid_waypoints = missions[0].search_grid_points
+	
+	# # Draw orange circles marking the search grid waypoints
+	# for i in range(0, len(search_grid_waypoints)):
+	# 	lat = flyzone_waypoints[i].latitude
+	# 	lon = flyzone_waypoints[i].longitude
+
+	# 	pix_lat = gpsToPixel(lat, "lat")
+	# 	pix_lon = gpsToPixel(lon, "lon")
+	# 	# make a circle at given waypoint
+	# 	# search_grid_circles.append(makeCircle((search_grid_waypoints[i].latitude, search_grid_waypoints[i].longitude),20, "orange"))
+
+	# 	# draw lines from waypoint to waypoint, connecting the last waypoint to the first one
+	# 	if(len(search_grid_waypoints) != 0):
+	# 		if(i != len(search_grid_waypoints)-1):
+	# 			search_grid_lines.append(createLine((lat,lon), (search_grid_waypoints[i+1].latitude, search_grid_waypoints[i+1].longitude), "orange"))
+	# 		else:
+	# 			search_grid_lines.append(createLine((lat, lon), (search_grid_waypoints[0].latitude, search_grid_waypoints[0].longitude), "orange"))
+
+	# mission_waypoints = missions[0].mission_waypoints
+	
+	# # Draw blue circles marking the search grid waypoints
+	# for i in range(0, len(mission_waypoints)):
+	# 	lat = mission_waypoints[i].latitude
+	# 	lon = mission_waypoints[i].longitude
+
+	# 	pix_lat = gpsToPixel(lat, "lat")
+	# 	pix_lon = gpsToPixel(lon, "lon")
+	# 	# make a circle at given waypoint
+	# 	# search_grid_circles.append(makeCircle((mission_waypoints[i].latitude, mission_waypoints[i].longitude),20, "blue"))
+
+	# 	if(len(mission_waypoints) != 0):
+	# 		# draw lines from waypoint to waypoint, connecting the last waypoint to the first one
+	# 		if(i != len(mission_waypoints)-1):
+	# 			search_grid_lines.append(createLine((lat,lon), (mission_waypoints[i+1].latitude, mission_waypoints[i+1].longitude), "orange"))
+	# 		else:
+	# 			search_grid_lines.append(createLine((lat, lon), (mission_waypoints[0].latitude, mission_waypoints[0].longitude), "orange"))
+	
+	# obstacles = Server.getObstacles()
+
+	# Draw blue circles marking the search grid waypoints
+	# for i in range(0, len(obstacles[0])):
+	# 	if( isinstance(obstacles[i][0], interop.StationaryObstacle)):
+	# 		lat = obstacles[i][0].latitude
+	# 		lon = obstacles[i][0].longitude
+	# 		radius = obstacles[i][0].cylinder_radius
+
+	# 		# make a circle at given waypoint
+	# 		if(len(obstacles) != 0):
+	# 			# draw lines from waypoint to waypoint, connecting the last waypoint to the first one
+				
+	# 			obstacles_circles.append( makeCircle((lat, lon), radius, "red"))
+
+	# update() # update the gui with new info	
 	
 	# starts the gui
 	mainloop()
