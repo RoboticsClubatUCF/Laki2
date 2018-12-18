@@ -135,3 +135,43 @@ SETTING SPEED:
 Flipping start switch:
 
 	rostopic pub -l /mavros/rc/in mavros_msgs/RCIn {'channels: [0,0,0,1500,0,0,2113,0,0,0,0,0,0,0,0,0,0,0]'}
+
+
+
+
+rostopic pub /laki2/mission/waypoints laki2_msg/MissionPath "points:
+- x: 10.0
+  y: 10.0
+  z: 10.0
+- x: 20.0
+  y: 20.0
+  z: 10.0
+- x: 30.0
+  y: 30.0
+  z: 10.0
+- x: 40.0
+  y: 40.0
+  z: 10.0
+- x: 50.0
+  y: 50.0
+  z: 10.0  
+  "
+
+
+rostopic pub /laki2/mission/waypoints laki2_msg/MissionPath "points:
+- x: 60.0
+  y: 10.0
+  z: 10.0
+- x: 70.0
+  y: 20.0
+  z: 10.0
+- x: 80.0
+  y: 30.0
+  z: 10.0
+- x: 90.0
+  y: 40.0
+  z: 10.0
+- x: 100.0
+  y: 50.0
+  z: 10.0  
+  "

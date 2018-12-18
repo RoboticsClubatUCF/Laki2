@@ -9,6 +9,8 @@ from geometry_msgs.msg import PoseStamped, TwistStamped
 from sensor_msgs.msg import NavSatFix
 
 import laki2_common.gps_converter as laki2_GPS
+from laki2_common import TextColors
+from laki2_msg.msg import MissionPath
 
 # simple Waypoint (WP) class to hold (x,y,z)s 
 # used in MISSION state to build the mission
@@ -75,8 +77,6 @@ def setMode(mode):
 # Purpose: 	main flight state; builds the mission that is passed to ArduPilot, then waits for more missions
 class Mission(smach.State):
 	
-	def __init__(self):
-		smach.State.__init__(self,outcomes=['toLAND','exit_flight'])
 
 	# clears missions from ArduPilot	
 	def clearCurrentMission(self):
@@ -110,7 +110,7 @@ class Mission(smach.State):
 
 		waypointList = WaypointList()
 		# waypointList.start_index = 
-		
+
 		for coord in gps_list:
 
 			wp = Waypoint()
@@ -129,8 +129,8 @@ class Mission(smach.State):
 
 			waypointList.waypoints.append(wp)
 
-		for wp in waypointList.waypoints:
-			print(wp.x_lat, wp.y_long, wp.z_alt)	
+		# for wp in waypointList.waypoints:
+		# 	print(wp.x_lat, wp.y_long, wp.z_alt)	
 
 		try:
 			pushMissionSrv = rospy.ServiceProxy('/mavros/mission/push', WaypointPush)
@@ -139,23 +139,23 @@ class Mission(smach.State):
 		except rospy.ServiceException, e:
 			rospy.loginfo('Service call failed: %s' %e)	
 
-	def execute(self, userdata):
-	
-		self.clearCurrentMission()
+		self.mission_ready = True	
 
-		# a hardcoded mission for testing
-		wp1 = WP(10,10,10)
-		wp2 = WP(20,20,10)
-		wp3 = WP(30,30,10)
-		wp4 = WP(40,40,10)
-		wp5 = WP(50,50,10)
+	def getMissionWPs(self, data):
+
+		self.wp_list = []
+		self.mission_ready = False
+
+		for point in data.points:
+			new_wp = WP(point.x, point.y, point.z)
+			self.wp_list.append(new_wp)
+
+		self.clearCurrentMission()	
 
 		# hard-coded start point, ideally this will be done dynamically in the future
 		home = Coord(-35.36326,149.16524)
 
-		wp_list = [wp1,wp2,wp3,wp4,wp5]
-
-		gps_list = self.convertToGPS(home, wp_list)
+		gps_list = self.convertToGPS(home, self.wp_list)
 		self.createMission(gps_list)
 		# self.createMission(self.convertToGPS(home, wp_list))
 
@@ -167,8 +167,53 @@ class Mission(smach.State):
 		except rospy.ServiceException, e:
 			rospy.loginfo(TextColors.FAIL + 'Service call failed: %s' %e + TextColors.ENDC)
 
+
+	def __init__(self):
+		smach.State.__init__(self,outcomes=['toLAND','exit_flight'])
+		self.wp_list = []
+		self.mission_ready = False
+		rospy.Subscriber("/laki2/mission/waypoints", MissionPath, self.getMissionWPs)
+
+	def execute(self, userdata):
+	
+		self.clearCurrentMission()
+
+		# # a hardcoded mission for testing
+		# wp1 = WP(10,10,10)
+		# wp2 = WP(20,20,10)
+		# wp3 = WP(30,30,10)
+		# wp4 = WP(40,40,10)
+		# wp5 = WP(50,50,10)
+
+		# # hard-coded start point, ideally this will be done dynamically in the future
+		# home = Coord(-35.36326,149.16524)
+
+		# wp_list = [wp1,wp2,wp3,wp4,wp5]
+
+		# gps_list = self.convertToGPS(home, self.wp_list)
+		# self.createMission(gps_list)
+		# # self.createMission(self.convertToGPS(home, wp_list))
+
+
+		# try:	#service call to set mode to auto
+		# 	setModeSrv = rospy.ServiceProxy("/mavros/set_mode", SetMode) #http://wiki.ros.org/mavros/CustomModes
+		# 	setModeResponse = setModeSrv(0, 'AUTO')
+		# 	rospy.loginfo(TextColors.OKGREEN + str(setModeResponse) + TextColors.ENDC)
+		# except rospy.ServiceException, e:
+		# 	rospy.loginfo(TextColors.FAIL + 'Service call failed: %s' %e + TextColors.ENDC)
+
 		while not rospy.is_shutdown():
 		
+			# if self.mission_ready:
+			# 	try:	#service call to set mode to auto
+			# 		setModeSrv = rospy.ServiceProxy("/mavros/set_mode", SetMode) #http://wiki.ros.org/mavros/CustomModes
+			# 		setModeResponse = setModeSrv(0, 'AUTO')
+			# 		rospy.loginfo(TextColors.OKGREEN + str(setModeResponse) + TextColors.ENDC)
+			# 	except rospy.ServiceException, e:
+			# 		rospy.loginfo(TextColors.FAIL + 'Service call failed: %s' %e + TextColors.ENDC)
+			# else:
+			# 	continue		
+
 			rospy.spin()	
 
 
