@@ -28,16 +28,30 @@ class Coord:
 		self.longitude = longitude
 		self.altitude = altitude
 
-# totally unnecessary class to make terminal output pretty
-class TextColors:
-    HEADER = '\033[95m'
-    OKBLUE = '\033[94m'
-    OKGREEN = '\033[92m'
-    WARNING = '\033[93m'
-    FAIL = '\033[91m'
-    ENDC = '\033[0m'
-    BOLD = '\033[1m'
-    UNDERLINE = '\033[4m'		
+# # totally unnecessary class to make terminal output pretty
+# class TextColors:
+#     HEADER = '\033[95m'
+#     OKBLUE = '\033[94m'
+#     OKGREEN = '\033[92m'
+#     WARNING = '\033[93m'
+#     FAIL = '\033[91m'
+#     ENDC = '\033[0m'
+#     BOLD = '\033[1m'
+#     UNDERLINE = '\033[4m'		
+
+# uses ROS service to set ARDUPILOT mode
+# takes string with mode name, ALL CAPS
+# made because this method is used multiple times throughout
+def setMode(mode):
+
+	try:	#service call to set mode to auto
+		setModeSrv = rospy.ServiceProxy("/mavros/set_mode", SetMode) #http://wiki.ros.org/mavros/CustomModes
+		setModeResponse = setModeSrv(0, mode)
+		rospy.loginfo(TextColors.OKGREEN + str(setModeResponse) + TextColors.ENDC)
+	except rospy.ServiceException, e:
+		rospy.loginfo(TextColors.FAIL + 'Service call failed: %s' %e + TextColors.ENDC)
+
+	return setModeResponse	    
 
 # # just holds the copter in Standby state, doesn't do anything
 # class Standby(smach.State):
@@ -53,6 +67,8 @@ class TextColors:
 
 # 			rospy.spin()	
 
+
+
 # SM State: MISSION
 # From: 	TAKEOFF
 # To:		EXIT FLIGHT_SM
@@ -60,7 +76,7 @@ class TextColors:
 class Mission(smach.State):
 	
 	def __init__(self):
-		smach.State.__init__(self,outcomes=['exit_flight'])
+		smach.State.__init__(self,outcomes=['toLAND','exit_flight'])
 
 	# clears missions from ArduPilot	
 	def clearCurrentMission(self):
@@ -94,7 +110,6 @@ class Mission(smach.State):
 
 		waypointList = WaypointList()
 		# waypointList.start_index = 
-
 		
 		for coord in gps_list:
 
@@ -140,7 +155,9 @@ class Mission(smach.State):
 
 		wp_list = [wp1,wp2,wp3,wp4,wp5]
 
-		self.createMission(self.convertToGPS(home, wp_list))
+		gps_list = self.convertToGPS(home, wp_list)
+		self.createMission(gps_list)
+		# self.createMission(self.convertToGPS(home, wp_list))
 
 
 		try:	#service call to set mode to auto
@@ -154,4 +171,7 @@ class Mission(smach.State):
 		
 			rospy.spin()	
 
+
 		return 'exit_flight'
+
+

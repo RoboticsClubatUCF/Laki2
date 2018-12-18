@@ -28,7 +28,7 @@ def getMavrosState(data):
 
 # callback that reads the /mavros/rc/in topic
 # /mavros/rc/in is an RCIn topic, which provides an array of RC channels
-# provided array can be used to simulate a real-world rc controller
+# provided array can be used to simulate a real-world rc unit
 def getRCChannels(data):
 
 	global rcNum
@@ -48,6 +48,39 @@ def getCurrentPosition(data):
 
 	global current_pos
 	current_pos = data	
+
+
+# uses ROS service to set ARDUPILOT mode
+# takes string with mode name, ALL CAPS
+# made because this method is used multiple times throughout
+def setMode(mode):
+
+	try:	#service call to set mode to auto
+		setModeSrv = rospy.ServiceProxy("/mavros/set_mode", SetMode) #http://wiki.ros.org/mavros/CustomModes
+		setModeResponse = setModeSrv(0, mode)
+		rospy.loginfo(TextColors.OKGREEN + str(setModeResponse) + TextColors.ENDC)
+	except rospy.ServiceException, e:
+		rospy.loginfo(TextColors.FAIL + 'Service call failed: %s' %e + TextColors.ENDC)
+
+	return setModeResponse	
+
+# SM State: Land
+# From:		Mission, Hover(NYI)
+# Purpose:	controlled landing of the quad wherever it is
+#			NO RTL 
+class Land(smach.State):
+
+	def __init__(self):
+		smach.State.__init__(self, outcomes=['exit'])
+
+	def execute(self,userdata):
+
+		setMode('LAND')
+
+		while not rospy.is_shutdown():
+
+			if(current_pos.pose.pose.position.z == 0):
+				return 'exit'		
 
 # SM State: PREFLIGHT
 # From: 	NONE
@@ -178,7 +211,7 @@ class Takeoff(smach.State):
 
 			rate.sleep()	
 
-
+		
 def main():
 	
 	rospy.init_node('laki2_sm', anonymous=True)
@@ -195,14 +228,15 @@ def main():
 
 		smach.StateMachine.add('PREFLIGHT', Preflight(), transitions={'toTAKEOFF':'TAKEOFF','exit':'exit_sm'})
 		smach.StateMachine.add('TAKEOFF', Takeoff(), transitions={'toPREFLIGHT': 'PREFLIGHT','toFLIGHT_SM':'FLIGHT_SM','exit':'exit_sm'})
-		# smach.StateMachine.add('LAND', Land(), transitions={'exit':'exit_sm'})
 
 		flight_sm = smach.StateMachine(outcomes=['exit_flight_sm'])
 
 		with flight_sm:
 
 			# smach.StateMachine.add('STANDBY', flight.Standby(), transitions={'toMISSION':'MISSION','exit_flight':'exit_flight_sm'})
-			smach.StateMachine.add('MISSION', flight.Mission(), transitions={'exit_flight':'exit_flight_sm'})
+			
+			smach.StateMachine.add('MISSION', flight.Mission(), transitions={'toLAND':'LAND','exit_flight':'exit_flight_sm'})
+			smach.StateMachine.add('LAND', Land(), transitions={'exit':'exit_flight_sm'})
 
 		smach.StateMachine.add('FLIGHT_SM', flight_sm, transitions={'exit_flight_sm':'exit_sm'})	
 
