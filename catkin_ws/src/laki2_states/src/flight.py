@@ -32,7 +32,7 @@ class Coord:
 
 # uses ROS service to set ARDUPILOT mode
 # takes string with mode name, ALL CAPS
-# WORKING, TESTED: AUTO, LAND
+# TESTED WORKING: AUTO, LAND, BRAKE
 def setMode(mode):
 
 	try:	#service call to set mode to auto
@@ -43,7 +43,6 @@ def setMode(mode):
 		rospy.loginfo(TextColors.FAIL + 'Service call failed: %s' %e + TextColors.ENDC)
 
 	return setModeResponse	    
-
 
 # SM State: MISSION
 # From: 	TAKEOFF
@@ -101,7 +100,6 @@ class Mission(smach.State):
 		self.mission_ready = True		
 		return waypointList	
 		
-
 	def pushMission(self, mission):
 
 		try:
@@ -116,6 +114,7 @@ class Mission(smach.State):
 
 	def getMissionWPs(self, data):
 
+		setMode("BRAKE")
 		self.clearCurrentMission()	
 
 		self.wp_list = []
@@ -168,3 +167,9 @@ class Mission(smach.State):
 		return 'exit_flight'
 
 
+
+
+	###	READ THIS: 	strange behavior when using multiple flight missions - 
+	###				using the brake mode, a mission can	be interrupted and a new one can be uploaded
+	###				HOWEVER, the new mission will start at waypoint #1 (instead of WP#0) for reasons unknown
+	### 			once that issue is fixed, and the brake mode is integrated, the mission state should be completed
