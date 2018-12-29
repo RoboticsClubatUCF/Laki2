@@ -21,6 +21,10 @@ class WP:
 		self.y = y
 		self.z = z
 
+	def isEqual(self, wp): #is this waypoint (self) equal to another waypoint (wp)
+		
+		return (self.x == wp.x and self.y == wp.y and self.z == wp.z)
+
 # simple GPS coordinate class
 # coords are used as mission points in MISSION state
 class Coord:
@@ -114,11 +118,12 @@ class Mission(smach.State):
 
 	def getMissionWPs(self, data):
 
-		setMode("BRAKE")
+		setMode('BRAKE')
 		self.clearCurrentMission()	
 
 		self.wp_list = []
-		
+		self.wp_list.append(self.current_pos)
+
 		for point in data.points:
 			new_wp = WP(point.x, point.y, point.z)
 			self.wp_list.append(new_wp)
@@ -128,14 +133,21 @@ class Mission(smach.State):
 	def getState(self, data):
 
 		self.state = data
-			
+
+	def getPosition(self, data):
+
+
+		self.current_pos = WP(data.pose.pose.position.x, data.pose.pose.position.y, data.pose.pose.position.z)
+
 	def __init__(self):
-		smach.State.__init__(self,outcomes=['toLAND','exit_flight'])
+		smach.State.__init__(self,outcomes=['returnToPREFLIGHT','toLAND','exit_flight'])
 		self.wp_list = []
 		self.mission_ready = None
 		self.state = None
+		self.current_pos = None
 		rospy.Subscriber("/laki2/mission/waypoints", MissionPath, self.getMissionWPs)
 		rospy.Subscriber("/mavros/state", State, self.getState)
+		rospy.Subscriber("/mavros/local_position/odom", Odometry, self.getPosition)
 
 	def execute(self, userdata):
 	
@@ -150,24 +162,23 @@ class Mission(smach.State):
 			# hard-coded start point, ideally this will be done dynamically in the future
 			home = Coord(-35.36326,149.16524)
 
+			if (-.1 <= self.current_pos.z <= .1):
+				return 'returnToPREFLIGHT'
 			if self.mission_ready is None:
-				rospy.loginfo(self.mission_ready)
+				# rospy.loginfo(self.mission_ready)
 				continue
 			elif not self.mission_ready:
-				rospy.loginfo(self.mission_ready)
+				# rospy.loginfo(self.mission_ready)
 				gps_list = self.convertToGPS(home, self.wp_list)
 				mission = self.createMission(gps_list)
 				# self.createMission(self.convertToGPS(home, wp_list))
 			else:
-				rospy.loginfo(self.mission_ready)
+				# rospy.loginfo(self.mission_ready)
 				self.pushMission(mission)
 				if self.state.mode is not 'AUTO':
 					setMode('AUTO')
 
 		return 'exit_flight'
-
-
-
 
 	###	READ THIS: 	strange behavior when using multiple flight missions - 
 	###				using the brake mode, a mission can	be interrupted and a new one can be uploaded

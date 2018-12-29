@@ -71,7 +71,7 @@ def setMode(mode):
 class Land(smach.State):
 
 	def __init__(self):
-		smach.State.__init__(self, outcomes=['exit'])
+		smach.State.__init__(self, outcomes=['returnToPREFLIGHT','exit_flight'])
 
 	def execute(self,userdata):
 
@@ -80,7 +80,7 @@ class Land(smach.State):
 		while not rospy.is_shutdown():
 
 			if(current_pos.pose.pose.position.z == 0):
-				return 'exit'		
+				return 'returnToPREFLIGHT'		
 
 # SM State: PREFLIGHT
 # From: 	NONE
@@ -137,7 +137,6 @@ class Preflight(smach.State):
 			if rcNum == 2113: 
 				rospy.loginfo(TextColors.OKGREEN + "RC SWITCH: ON" + TextColors.ENDC)
 				return 'toTAKEOFF'
-
 
 # SM State: TAKEOFF
 # From: 	PREFLIGHT
@@ -211,7 +210,6 @@ class Takeoff(smach.State):
 
 			rate.sleep()	
 
-		
 def main():
 	
 	rospy.init_node('laki2_sm', anonymous=True)
@@ -229,16 +227,14 @@ def main():
 		smach.StateMachine.add('PREFLIGHT', Preflight(), transitions={'toTAKEOFF':'TAKEOFF','exit':'exit_sm'})
 		smach.StateMachine.add('TAKEOFF', Takeoff(), transitions={'toPREFLIGHT': 'PREFLIGHT','toFLIGHT_SM':'FLIGHT_SM','exit':'exit_sm'})
 
-		flight_sm = smach.StateMachine(outcomes=['exit_flight_sm'])
+		flight_sm = smach.StateMachine(outcomes=['exit_to_preflight','exit_flight_sm'])
 
 		with flight_sm:
-
-			# smach.StateMachine.add('STANDBY', flight.Standby(), transitions={'toMISSION':'MISSION','exit_flight':'exit_flight_sm'})
 			
-			smach.StateMachine.add('MISSION', flight.Mission(), transitions={'toLAND':'LAND','exit_flight':'exit_flight_sm'})
-			smach.StateMachine.add('LAND', Land(), transitions={'exit':'exit_flight_sm'})
+			smach.StateMachine.add('MISSION', flight.Mission(), transitions={'returnToPREFLIGHT':'exit_to_preflight','toLAND':'LAND','exit_flight':'exit_flight_sm'})
+			smach.StateMachine.add('LAND', Land(), transitions={'returnToPREFLIGHT':'exit_to_preflight','exit_flight':'exit_flight_sm'})
 
-		smach.StateMachine.add('FLIGHT_SM', flight_sm, transitions={'exit_flight_sm':'exit_sm'})	
+		smach.StateMachine.add('FLIGHT_SM', flight_sm, transitions={'exit_to_preflight':'PREFLIGHT','exit_flight_sm':'exit_sm'})	
 
 	introspect = smach_ros.IntrospectionServer('server', sm, '/SM')
 	introspect.start()
