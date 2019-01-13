@@ -24,12 +24,16 @@ cmake ..
 make -j4
 sudo make install
 
+cd 
+cd ardupilot/Tools/autotest
+echo 'RC@UCF=28.5858215,-81.19923540000002,135,0' >> locations.txt
+
 echo 'export GAZEBO_MODEL_PATH=~/Laki2/catkin_ws/src/laki2_sim/models:~/ardupilot_gazebo/gazebo_models:${GAZEBO_MODEL_PATH}' >> ~/.bashrc
 echo "export GAZEBO_RESOURCE_PATH=~/ardupilot_gazebo/gazebo_worlds:~/Laki2/catkin_ws/src/laki2_sim/worlds:${GAZEBO_RESOURCE_PATH}
 source ~/.bashrc
 
 #TO RUN SIMULATOR ###
-sim_vehicle.py -v ArduCopter -f gazebo-iris
+sim_vehicle.py -v ArduCopter -f gazebo-iris -L RC@UCF (NOTE: locations defined in ardupilot/Tools/autotest/locations.txt)
 gazebo --verbose laki2_ardu.world
 roslaunch laki2_sim apm.launch
 
