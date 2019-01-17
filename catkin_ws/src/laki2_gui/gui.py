@@ -1,4 +1,22 @@
-from tkinter import *
+# Made by Matthew Kurtz
+
+# The code that is currently commented out at the bottom of main() is done so because the Server.py 
+# class is not finished. Once the Server.py can actually communicate with the server, these features 
+# should be uncommented. These features include drawing different colored lines from waypoint to 
+# waypoint 
+
+
+# USER GUIDE (Instructions):
+# 	To add waypoints, determine which type of waypoint you want to add (Mission, odlc, emergent LKP, Search grid or FlyZone)
+#	Click on the satellite image where you would like to add the waypoints, the server will be updated with the appropriate 
+#   	at that position.
+# 	When finished adding waypoints, click the "Finish adding waypoints" button so you don't accidentally click and add more.
+# 	
+#	When connected to ROS, the current GPS position of the drone will be displayed along with the altitude.
+
+# TODO: Update GPS picture with current drone position
+
+from Tkinter import *
 import cv2, numpy as np, mavros, rospy
 from sensor_msgs.msg import NavSatFix
 from nav_msgs.msg import Odometry
@@ -364,6 +382,11 @@ def makeCircle(centroid, radius, color):
 
 	return canvas.create_oval(TL[0], TL[1], BR[0], BR[1], fill=color)
 
+# Below are the click callbacks and appropriate method calls. 
+# A click callback is whenever the mouse is clicked, the gui
+# works by having the buttons change which click callback
+# is being called, hence changing the desired effect.
+
 def clickCallback_noCommand(event):
 	pixel = (event.y, event.x)
 
@@ -604,6 +627,27 @@ def addObstacle():
 	global clickListener
 	clickListener = clickCallback_addObstacle
 
+def drawWaypointCircuit(waypoint_list, line_color):
+		waypoint_lines = []
+		# Draw all the flyzone waypoints that have been given by the server
+		for i in range(0, len(flyzone_waypoints)):
+			lat = flyzone_waypoints[i].latitude
+			lon = flyzone_waypoints[i].longitude
+
+			pix_lat = gpsToPixel(lat, "lat")
+			pix_lon = gpsToPixel(lon, "lon")
+			#makeCircle((pix_lat, pix_lon), 20)
+			
+			# make a red circle at every flyzone waypoint
+			# flyzone_circles.append(makeCircle((lat, lon), 20, 'red'))
+
+			# draw lines from waypoint to waypoint, connecting the last waypoint to the first one
+			if(i != len(flyzone_waypoints)-1):
+				waypoint_lines.append(createLine((lat, lon), (flyzone_waypoints[i+1].latitude, flyzone_waypoints[i+1].longitude), line_color))
+			else:
+				waypoint_lines.append(createLine((lat, lon), (flyzone_waypoints[0].latitude, flyzone_waypoints[0].longitude), line_color))
+		return waypoint_lines
+
 clickListener = clickCallback_noCommand
 
 def main():
@@ -702,129 +746,100 @@ def main():
 	label_altitudeData = Label(root, text = "NO GPS DATA")
 	label_altitudeData.grid(row = 1, column = second_col)
 
-	# put the icon to the left of the text label
+	# Add missions button
 	b_addMissionWaypoints = Button(text="Add Mission Waypoints", command=addMissionWaypoints, width=20)
 	b_addMissionWaypoints.grid(row=rosRows+1, column=first_col)
 
+	# Clear mission waypoints button
 	b_clearMissionWaypoints = Button(text="Clear Mission Waypoints", command=clearMissionWaypoints, width=20)
 	b_clearMissionWaypoints.grid(row=rosRows+1, column=second_col,)
 
+	# Confirm waypoint selection button
 	b_confirmWaypointSelection = Button(text="Finish Adding Waypoints", command=confirmWaypointSelection, width=45)
 	b_confirmWaypointSelection.grid(row=rosRows+2, column=first_col, columnspan = 2)
 
+	# Change air drop waypoint button
 	b_changeAir_drop_pos = Button(text="Change Air Drop Waypoint", command=changeAirDropPosition, width=20)
 	b_changeAir_drop_pos.grid(row=rosRows+3, column=first_col)
 
+	# Delete air drop waypoint button
 	b_deleteAir_drop_pos = Button(text="Delete Air Drop Waypoint", command=deleteAirDropPosition, width=20)
 	b_deleteAir_drop_pos.grid(row=rosRows+3, column=second_col)
 
+	# Change odlc position button
 	b_changeOff_axis_odlc_pos = Button(text="Change odlc position", command=changeOdlcPosition, width=20)
 	b_changeOff_axis_odlc_pos.grid(row=rosRows+4,column=first_col)
 
+	# Delete odlc position button
 	b_deleteOff_axis_odlc_pos = Button(text="Delete odlc position", command=deleteOdlcPosition, width=20)
 	b_deleteOff_axis_odlc_pos.grid(row=rosRows+4,column=second_col)
 
+	# Change emergent LKP (last known position) button
 	b_changeEmergent_last_known_pos = Button(text="Change emergent LKP", command=changeEmergent, width=20)
 	b_changeEmergent_last_known_pos.grid(row=rosRows+5, column=first_col)
 
+	# Delete emergent LKP (last known position) button
 	b_deleteEmergent_last_known_pos = Button(text="Delete emergent LKP", command=deleteEmergent, width=20)
 	b_deleteEmergent_last_known_pos.grid(row=rosRows+5, column=second_col)
 
+	# Add Search Grid Wayoints button
 	b_addSearch_grid_points = Button(text="Add Search Grid Waypoints", command=addSearchGridWaypoints, width=20)
 	b_addSearch_grid_points.grid(row=rosRows+6, column=first_col)
 
+	# Clear Search Grid Waypoints button
 	b_clearSearch_grid_points = Button(text="Clear Search Grid Waypoints", command=clearSearchGridWaypoints, width=20)
 	b_clearSearch_grid_points.grid(row=rosRows+6, column=second_col)
 
+	# Add FlyZone Waypoints button
 	b_addFly_zones_Waypoints = Button(text="Add FlyZone Waypoints", command=addFlyzoneWaypoints, width=20)
 	b_addFly_zones_Waypoints.grid(row=rosRows+7, column=first_col)
 
+	# Clear FlyZone Waypoints Button
 	b_clearFlyzone_Waypoints = Button(text="Clear FlyZone Waypoints", command=clearFlyzoneWaypoints, width=20)
 	b_clearFlyzone_Waypoints.grid(row=rosRows+7, column = second_col)
 
+	# Add Obstacle Button
 	b_addObstacle = Button(text="Add Obstacle", command=addObstacle, width=45)
 	b_addObstacle.grid(row=rosRows+9, column = first_col, columnspan = 2)
 
+	# Entry Text box for obstacle height
 	et_obstacleHeight = Entry(root, textvariable=obstacle_height_input, width=22)
 	et_obstacleHeight.grid(row=rosRows+8, column = first_col)
 
+	# Entry Text box for obstacle radius
 	et_obstacleRadius = Entry(root, textvariable=obstacle_radius_input, width=22)
 	et_obstacleRadius.grid(row=rosRows+8, column = second_col)
 	
-	# corners = getCorners(0)
 
+	# Below may be useful in debugging, the Bx, By, Ax, Ay, are defined in the
+	# corners = getCorners(0)
 	# Bx = corners[1][1]
 	# By = corners[1][0]
 	# Ax = corners[0][1]
 	# Ay = corners[2][0]
 
+#     EVERYTHING BELOW THIS LINE SHOULD BE UNCOMMENTED ONCE SERVER.PY WORKS      #
+#--------------------------------------------------------------------------------#
+
 	# missions = Server.get_missions()
 
-	# #TODO: generalize the following for loops:
-
-	# # list of waypoints outlc
+	# # Draw red lines that correspond to the limits of the flyzone
 	# flyzone_waypoints = missions[0].fly_zones[0].boundary_pts
+	# flyzone_lines = drawWaypointCircuit(flyzone_waypoints, "red")
 
-	# # Draw all the flyzone waypoints that have been given by the server
-	# for i in range(0, len(flyzone_waypoints)):
-	# 	lat = flyzone_waypoints[i].latitude
-	# 	lon = flyzone_waypoints[i].longitude
-
-	# 	pix_lat = gpsToPixel(lat, "lat")
-	# 	pix_lon = gpsToPixel(lon, "lon")
-	# 	#makeCircle((pix_lat, pix_lon), 20)
-		
-	# 	# make a red circle at every flyzone waypoint
-	# 	# flyzone_circles.append(makeCircle((lat, lon), 20, 'red'))
-
-	# 	# draw lines from waypoint to waypoint, connecting the last waypoint to the first one
-	# 	if(i != len(flyzone_waypoints)-1):
-	# 		flyzone_lines.append(createLine((lat, lon), (flyzone_waypoints[i+1].latitude, flyzone_waypoints[i+1].longitude), "red"))
-	# 	else:
-	# 		flyzone_lines.append(createLine((lat, lon), (flyzone_waypoints[0].latitude, flyzone_waypoints[0].longitude), "red"))
-
-
+	# # Draw orange lines that correspoind to limits of the search grid
 	# search_grid_waypoints = missions[0].search_grid_points
+	# search_grid_lines = drawWaypointCircuit(search_grid_waypoints, "orange")
 	
-	# # Draw orange circles marking the search grid waypoints
-	# for i in range(0, len(search_grid_waypoints)):
-	# 	lat = flyzone_waypoints[i].latitude
-	# 	lon = flyzone_waypoints[i].longitude
 
-	# 	pix_lat = gpsToPixel(lat, "lat")
-	# 	pix_lon = gpsToPixel(lon, "lon")
-	# 	# make a circle at given waypoint
-	# 	# search_grid_circles.append(makeCircle((search_grid_waypoints[i].latitude, search_grid_waypoints[i].longitude),20, "orange"))
-
-	# 	# draw lines from waypoint to waypoint, connecting the last waypoint to the first one
-	# 	if(len(search_grid_waypoints) != 0):
-	# 		if(i != len(search_grid_waypoints)-1):
-	# 			search_grid_lines.append(createLine((lat,lon), (search_grid_waypoints[i+1].latitude, search_grid_waypoints[i+1].longitude), "orange"))
-	# 		else:
-	# 			search_grid_lines.append(createLine((lat, lon), (search_grid_waypoints[0].latitude, search_grid_waypoints[0].longitude), "orange"))
-
+	# # Draw blue lines marking the path of the mission waypoints
 	# mission_waypoints = missions[0].mission_waypoints
+	# mission_waypoints_lines = drawWaypointCircuit(mission_waypoints, "blue")
 	
-	# # Draw blue circles marking the search grid waypoints
-	# for i in range(0, len(mission_waypoints)):
-	# 	lat = mission_waypoints[i].latitude
-	# 	lon = mission_waypoints[i].longitude
-
-	# 	pix_lat = gpsToPixel(lat, "lat")
-	# 	pix_lon = gpsToPixel(lon, "lon")
-	# 	# make a circle at given waypoint
-	# 	# search_grid_circles.append(makeCircle((mission_waypoints[i].latitude, mission_waypoints[i].longitude),20, "blue"))
-
-	# 	if(len(mission_waypoints) != 0):
-	# 		# draw lines from waypoint to waypoint, connecting the last waypoint to the first one
-	# 		if(i != len(mission_waypoints)-1):
-	# 			search_grid_lines.append(createLine((lat,lon), (mission_waypoints[i+1].latitude, mission_waypoints[i+1].longitude), "orange"))
-	# 		else:
-	# 			search_grid_lines.append(createLine((lat, lon), (mission_waypoints[0].latitude, mission_waypoints[0].longitude), "orange"))
 	
 	# obstacles = Server.getObstacles()
 
-	# Draw blue circles marking the search grid waypoints
+	# # Draw blue circles marking the obstacles
 	# for i in range(0, len(obstacles[0])):
 	# 	if( isinstance(obstacles[i][0], interop.StationaryObstacle)):
 	# 		lat = obstacles[i][0].latitude

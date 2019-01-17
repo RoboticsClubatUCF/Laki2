@@ -1,0 +1,8 @@
+USER GUIDE (Instructions):
+  #	To add waypoints, determine which type of waypoint you want to add (Mission, odlc, emergent LKP, Search grid or FlyZone)
+	
+  # Click on the satellite image where you would like to add the waypoints, the server will be updated with the appropriate 
+     	at that position. When finished adding waypoints, click the "Finish adding waypoints" button so that
+     	you don't accidentally click and add more.
+
+  # When connected to ROS, the current GPS position of the drone will be displayed along with the altitude.

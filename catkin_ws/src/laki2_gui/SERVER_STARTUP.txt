@@ -1,5 +1,6 @@
+# Matthew Kurtz
+
 This is a quick reference for the information on the "Getting started" section
-located here: https://auvsi-suas-competition-interoperability-system.readthedocs.io/en/latest/getting_started.html#prerequisites
 
 Client library can be located here:
 https://github.com/auvsi-suas/interop/wiki/API-Specification
@@ -15,5 +16,6 @@ sudo docker start interop-server
 # localhost address default:
 http://localhost:8000/
 
-# default username: testadmin
-# default password: testpass
+# default admin username: testadmin
+# default user username : testuser
+# default password		: testpass
