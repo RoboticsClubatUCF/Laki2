@@ -19,8 +19,7 @@ class SimShell(cmd.Cmd):
 
 	def do_kill(self, arg):
 		'Kills sensor named by arg'
-		# setParamSrv = rospy.ServiceProxy('/mavros/param/set', ParamSet)
-		# command = *parse(arg)
+		
 		if arg == 'rc':
 			param = 'SIM_RC_FAIL'
 			value = Value(1, 0)
@@ -31,7 +30,6 @@ class SimShell(cmd.Cmd):
 
 	def do_revive(self, arg):	
 
-		# setParamSrv = rospy.ServiceProxy('/mavros/param/set', ParamSet)
 		if arg == 'rc':
 			param = 'SIM_RC_FAIL'
 			value = Value(0, 0)

@@ -180,7 +180,3 @@ class Mission(smach.State):
 
 		return 'exit_flight'
 
-	###	READ THIS: 	strange behavior when using multiple flight missions - 
-	###				using the brake mode, a mission can	be interrupted and a new one can be uploaded
-	###				HOWEVER, the new mission will start at waypoint #1 (instead of WP#0) for reasons unknown
-	### 			once that issue is fixed, and the brake mode is integrated, the mission state should be completed
