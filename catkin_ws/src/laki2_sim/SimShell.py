@@ -3,6 +3,7 @@
 import cmd, sys
 import rospy
 from mavros_msgs.srv import ParamSet, ParamGet
+from mavros_msgs.msg import RCIn
 
 class Value():
 
@@ -37,6 +38,14 @@ class SimShell(cmd.Cmd):
 			param = 'SIM_GPS_DISABLE'
 			value = Value(0,0)	
 		set_param(param, value)	
+
+	def do_takeoff(self, arg):
+		
+		rc_pub = rospy.Publisher('/mavros/rc/in', RCIn, queue_size = 100)	
+		rc_msg = RCIn()
+		rc_msg.channels = [0,0,0,1500,0,0,2113,0,0,0,0,0,0,0,0,0,0,0]
+		rc_pub.publish(rc_msg)
+
 
 	def do_end(self, arg):
 		return True	

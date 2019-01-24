@@ -35,7 +35,7 @@ class Coord:
 		self.altitude = altitude
 
 # uses ROS service to set ARDUPILOT mode
-# takes string with mode name, ALL CAPS
+# takes string with mode name, ALL CAPS e.g. 'BRAKE' or 'AUTO'
 # TESTED WORKING: AUTO, LAND, BRAKE
 def setMode(mode):
 
@@ -87,7 +87,7 @@ class Mission(smach.State):
 
 			wp = Waypoint()
 			wp.frame = 3
-			wp.command = 16 #simple point, full list in doc/MissionMessage.txt
+			wp.command = 16 #simple point, full list of commands in doc/MissionMessage.txt
 			wp.is_current = False
 			wp.autocontinue = True
 			wp.param1 = 0 #takeoff altitude
@@ -160,7 +160,7 @@ class Mission(smach.State):
 			rate.sleep()
 
 			# hard-coded start point, ideally this will be done dynamically in the future
-			home = Coord(-35.36326,149.16524)
+			home = Coord(28.5858215,-81.19923540000002)
 
 			if (-.1 <= self.current_pos.z <= .1):
 				return 'returnToPREFLIGHT'
