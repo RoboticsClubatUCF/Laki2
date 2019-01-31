@@ -243,5 +243,5 @@ def main():
 
 	outcome = sm.execute()	
 	
-if __name__ == '__main__':
-    main()
+if __name__ == '__main__': 
+    main() 
