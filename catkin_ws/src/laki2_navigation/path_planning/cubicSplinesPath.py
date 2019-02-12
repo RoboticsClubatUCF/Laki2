@@ -79,23 +79,13 @@ def cubicSplineCircleCollisions(csx, csy, circle, segments=None):
 
         # Now, the equation can be of the form:
         #   r^2 = (tX)^2 + (tY)^2
-        # This can be expanded to:
-        #   0 = (A^2 + a^2)t^6 + 
-        #       (2AB + 2ab)t^5 + 
-        #       (2AC + B^2 + 2ac + b^2)t^4 +
-        #       (2AD + 2BC + 2ad + abc)t^3 + 
-        #       (2BD + C^2 + 2bd + c^2)t^2 +
-        #       (2CD + 2cd)t + 
-        #       (D^2 + d^2 - r^2)
+        # Re-arrange to the following form and solve for x:
+        #   0 = (tX)^2 + (tY)^2 - r^2
 
-        coeff = [(tX[0]**2 + tY[0]**2),
-                (2 * tX[0] * tX[1] + 2 * tY[0] * tY[1]),
-                (2 * tX[0] * tX[2] + tX[1]**2 + 2 * tY[0] * tY[2] + tY[1]**2),
-                (2 * tX[0] * tX[3] + 2 * tX[1] * tX[2] + 
-                    2 * tY[0] * tY[3] + 2 * tY[1] * tY[2]),
-                (2 * tX[1] * tX[3] + tX[2]**2 + 2 * tY[1] * tY[3] + tY[2]**2), 
-                (2 * tX[2] * tX[3] + 2 * tY[2] * tY[3]),
-                (tX[3]**2 + tY[3]**2 - circle[1]**2)]
+        tX2 = np.polymul(tX, tX)
+        tY2 = np.polymul(tY, tY)
+        coeff = np.polyadd(tX2, tY2)
+        coeff = np.polysub(coeff, [circle[1]**2])
 
         roots = np.roots(coeff)
 
@@ -138,15 +128,10 @@ def cubicSplineCircleCollisions(csx, csy, circle, segments=None):
             # We are interested in where p is at a minimum, so where dp/dt is 0
             # Since 2 & p are always positive, ignore them and use the eqn:
             #   dp/dt = d ((tX)^2 + (tY)^2) /dt
-            # Use the power rule on the coefficients previously calculated for the
+            # Use the derivative coefficients previously calculated for the
             #   polynomial describing the intersection points
 
-            coeff = [6 * coeff[0],
-                    5 * coeff[1],
-                    4 * coeff[2],
-                    3 * coeff[3],
-                    2 * coeff[4], 
-                    1 * coeff[5]]
+            coeff = np.polyder(coeff)
 
             # The roots of that polynomial are the potential critical points where
             #   the distance to the center of the circle is at a local min or max
@@ -510,14 +495,16 @@ def cubicSplinePolygonCollisions(csx, csy, polyObj, segments=None):
 # TO DO: Create a polygon with which to guess points within
 # p.sample(rng); 0.0 <= rng <= 1.0
 
-def monteCarloSearch(wpx, wpy, tVals, polyObj, circles, i, allowedTime):
+def monteCarloSearch(wpx, wpy, tVals, newTval, polyObj, circles, i, allowedTime):
     # Start time of search
     startTime = time.time()
 
     # Make a copy of the inputs so as to not destory them
     wpxNew = copy.copy(wpx)
     wpyNew = copy.copy(wpy)
+    
     tNew = copy.copy(tVals)
+    tNew.insert(i+1, newTval)
 
     # TO DO:
     #   Modify the first new guess pt to be better.
@@ -631,24 +618,24 @@ def fixCollisions(wpx, wpy, tVals, polyObj, circles, allowedTime):
 
         # If there is a collision with the polygon, fix it
         if len(collisions): 
-            # Put the intermediate point at the point of interest
-            tNew.insert(i+1, collisions[0][1])
-
             # TO DO:
             # Modify monte carlo such that it does not mess up previous segments
             # Modify monte carlo such that it generates more points depending on the
             #   a) number of collisions with the polygon and circles
             #   b) arc length of the segment
-            solutions = monteCarloSearch(wpxNew, wpyNew, tNew, polyObj, circles, i, 
-                    (allowedTime / (2*numCollisions)))
+            solutions = monteCarloSearch(wpxNew, wpyNew, tVals, collisions[0][1], 
+                    polyObj, circles, i, (allowedTime / (2*numCollisions)))
             print "Found ", len(solutions), " Solutions"
 
             # TO DO:
             #   Rn best point just returns the single 'best' point
             #   Modify this to return multiple pts and do a tree expansion on them 
-            newPt = bestPoint(wpxNew, wpyNew, tNew, solutions, i+1, polyObj, circles)
+            newPt = bestPoint(wpxNew, wpyNew, tVals, collisions[0][1], solutions, 
+                    i+1, polyObj, circles)
+            
             wpxNew.insert(i+1, newPt[0])
             wpyNew.insert(i+1, newPt[1])
+            tNew.insert(i+1, collisions[0][1])
 
             csx = CubicSpline(tNew, wpxNew)
             csy = CubicSpline(tNew, wpyNew)
@@ -664,23 +651,25 @@ def fixCollisions(wpx, wpy, tVals, polyObj, circles, allowedTime):
         # If there is a collision with the polygon, fix it
         if len(collisions): 
             # Put the intermediate point at the point of interest
-            tNew.insert(i+1, collisions[0][1])
 
             # TO DO:
             # Modify monte carlo such that it does not mess up previous segments
             # Modify monte carlo such that it generates more points depending on the
             #   a) number of collisions with the polygon and circles
             #   b) arc length of the segment
-            solutions = monteCarloSearch(wpxNew, wpyNew, tNew, polyObj, circles, i, 
-                    (allowedTime / (2*numCollisions)))
+            solutions = monteCarloSearch(wpxNew, wpyNew, tNew, collisions[0][1], 
+                    polyObj, circles, i, (allowedTime / (2*numCollisions)))
             print "Found ", len(solutions), " Solutions"
 
             # TO DO:
             #   Rn best point just returns the single 'best' point
             #   Modify this to return multiple pts and do a tree expansion on them 
-            newPt = bestPoint(wpxNew, wpyNew, tNew, solutions, i+1, polyObj, circles)
+            newPt = bestPoint(wpxNew, wpyNew, tNew, collisions[0][1], solutions, 
+                    i+1, polyObj, circles)
+
             wpxNew.insert(i+1, newPt[0])
             wpyNew.insert(i+1, newPt[1])
+            tNew.insert(i+1, collisions[0][1])
 
             csx = CubicSpline(tNew, wpxNew)
             csy = CubicSpline(tNew, wpyNew)
@@ -746,7 +735,7 @@ def plotStuff(polyObj=None, poly=None, circles =None, wpx=None, wpy=None, tVals=
 
 #----------------------------------------------------------------------------------#
 
-def bestPoint(wpx, wpy, tVals, points, index, polyObj, circles):
+def bestPoint(wpx, wpy, tVals, newTval, points, index, polyObj, circles):
     scores = []
 
     lengths = []
@@ -755,16 +744,20 @@ def bestPoint(wpx, wpy, tVals, points, index, polyObj, circles):
     for point in points:
         wpxNew = copy.copy(wpx)
         wpyNew = copy.copy(wpy)
+        tNew = copy.copy(tVals)
+
         wpxNew.insert(index, point[0])
         wpyNew.insert(index, point[1])
-        csx = CubicSpline(tVals, wpxNew)
-        csy = CubicSpline(tVals, wpyNew)
+        tNew.insert(index, newTval)
+
+        csx = CubicSpline(tNew, wpxNew)
+        csy = CubicSpline(tNew, wpyNew)
 
         length = arcLength(csx, csy, csz=None)
 
         # Tried curvature, doesn't pick particularly good options
         curv = integrate.quad(lambda x: curvature(x, csx, csy), 
-                           tVals[0], tVals[-1], limit = 75)[0]
+                           tNew[0], tVals[-1], limit = 75)[0]
         
         # Curvature varies with the scale of t, to make it mostly invariant with t, 
         #   divide it by the final t value
@@ -810,7 +803,8 @@ def bestPoint(wpx, wpy, tVals, points, index, polyObj, circles):
         wpxNew.insert(index, scores[i][1][0])
         wpyNew.insert(index, scores[i][1][1])
 
-        #plotStuff(polyObj, None, circles, wpxNew, wpyNew, tVals)
+        print scores[i][0]
+        plotStuff(polyObj, None, circles, wpxNew, wpyNew, tNew)
 
     return scores[0][1]
 
