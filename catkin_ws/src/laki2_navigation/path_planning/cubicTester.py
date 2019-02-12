@@ -4,11 +4,13 @@ import numpy as np
 import scipy
 import copy
 import Polygon
+import Polygon.Utils
 import random
 from scipy.interpolate import CubicSpline, interp1d
 from scipy.optimize import minimize
 from scipy import integrate
 from scipy.misc import derivative
+from scipy.signal import find_peaks
 import matplotlib.pyplot as plt
 from matplotlib.pyplot import Circle
 from matplotlib.collections import PatchCollection
@@ -18,19 +20,85 @@ from cubicSplinesPath import *
 
 def main():
     # Initialize Figure
-    fig, ax = plt.subplots()
-    plt.gca().set_xlim([0,  1300])
-    plt.gca().set_ylim([0, 1300])
+    #fig, ax = plt.subplots()
+    #plt.gca().set_xlim([0,  1300])
+    #plt.gca().set_ylim([0, 1300])
 
     # Initialize 'given' waypoints
     wpxInit = [746.90, 1019.25, 390.52, 78.60, 204.4, 673.6]
     wpyInit = [1108.4, 1024.40, 155.47, 391.6, 612.7, 338.4]
     wpzInit = [100, 100, 100, 100, 100, 100, 100]
 
+        # Comp Boundary converted to XY
+    poly = [(609.9915651830946, 644.454456932276),
+            (655.4769561099155, 1238.9138134970472),
+            (899.4365305847842, 1268.1819761471047),
+            (1240.810387266854, 1124.454562201312),
+            (976.1887502964521, 788.4094397923109),
+            (1029.310174576658, 466.5050901843899),
+            (1188.824911231627, 309.8511306983688),
+            (1002.0957697243854, 0.0036295812471155995),
+            (421.55939798675325, 28.420887104681732),
+            (0.03993415704199533, 366.0542881303085),
+            (175.83977103766549, 764.1079686968526),
+            (477.5319123645307, 629.0467535497892)]
+
+    polyObj = Polygon.Polygon(poly)
+
+    circles = makeRandomCircles(10, wpxInit, wpyInit, polyObj)
+
+    ax = plt.gca()
+    for circle in circles:
+        circle = Circle(circle[0], circle[1], facecolor='r')
+        ax.add_patch(circle)
+
     plt.plot(wpxInit, wpyInit, 'x', label = 'data', color = (0,0,0,1))
 
     # Makes parameter spacing to be constant
-    t = np.arange(len(wpxInit))
+    t = [0]
+    for i in xrange(len(wpxInit) - 1):
+        dist = np.sqrt( (wpxInit[i] - wpxInit[i+1])**2 +
+                        (wpyInit[i] - wpyInit[i+1])**2 +
+                        (wpzInit[i] - wpzInit[i+1])**2)
+        t.append(t[-1] + dist)
+
+
+    #t = np.arange(len(wpxInit))
+    print t
+
+    xVals = []
+    yVals = []
+            
+    for pt in poly:
+        x, y = pt
+
+        xVals.append(x)
+        yVals.append(y)
+    
+    x, y = poly[0]
+    xVals.append(x)
+    yVals.append(y)
+    plt.plot(xVals, yVals)
+
+    csx = CubicSpline(t, wpxInit)
+    csy = CubicSpline(t, wpyInit)
+
+    # Plot parametric cubic splines
+    s = t[-1] / 100000
+    tSpace = np.arange(t[0], t[len(t)-1]+s, s)
+    plt.plot(csx(tSpace), csy(tSpace))
+
+    #plt.plot(csx(566.9), csy(566.9), 'o')
+    #plt.plot(csx(2247), csy(2247), 'o')
+
+    plt.show()
+    
+    wpxNew, wpyNew, tNew = fixCollisions(wpxInit, wpyInit, t, polyObj, circles, 2)
+
+    print "sup"
+    plotStuff(polyObj, None, circles, wpxNew, wpyNew, tNew)
+
+    """
 
     #t = optimizeParameterSpacing(wpxInit, wpyInit, t, arcLength)[0]
 
@@ -39,8 +107,78 @@ def main():
     csy = CubicSpline(t, wpyInit)
 
     # Plot parametric cubic splines
-    s = 0.01
-    tSpace = np.arange(t[0], t[len(t)-1] + s, s)
+    s = t[-1] / 100000
+    tSpace = np.arange(t[0], t[len(t)-1]+s, s)
+    
+    f, ((ax1), (ax2)) = plt.subplots(1, 2, sharey=False)
+    ax1.plot(csx(tSpace), csy(tSpace))
+    ax1.set_title("Path")
+    ax1.plot(wpxInit, wpyInit, 'x', label = 'data', color = (0,0,0,1))
+
+    # Curvature
+    cur = []
+    centerX = []
+    centerY = []
+
+    for val in tSpace:
+        cur.append(curvature(val, csx, csy))
+
+    ax2.plot(tSpace, cur)
+    ax2.set_title("Curvature")
+
+    peaks, _ = find_peaks(cur)
+
+    print tSpace[peaks]
+
+    for peak in peaks:
+        key = False
+
+        for pt in t:
+            if (abs(tSpace[peak] - pt) < 1):
+                key = True
+                break
+
+        if key:
+            continue
+
+        ax1.plot(csx(tSpace[peak]), csy(tSpace[peak]), 'o', color=(0,1,0,1))
+        ax2.plot(tSpace[peak], cur[peak], 'o', color=(0,1,0,1))
+
+    plt.show()
+
+    """
+    """
+    # Concavity 
+
+    con = []
+    negcon = []
+
+    for val in tSpace:
+        con.append(concavity(val, csx, csy))
+        negcon.append(-con[-1])
+
+
+    ax2.plot(tSpace, con)
+    ax2.set_title("Concavity")
+
+    peaks, _ = find_peaks(con, height = 0.01)
+    negPeaks, _ = find_peaks(negcon, height = 0.01)
+
+    print tSpace[peaks], tSpace[negPeaks]
+
+    for peak in peaks:
+        ax1.plot(csx(tSpace[peak]), csy(tSpace[peak]), 'o', color=(0,1,0,1))
+        ax2.plot(tSpace[peak], con[peak], 'o', color=(0,1,0,1))
+
+    for peak in negPeaks:
+        ax1.plot(csx(tSpace[peak]), csy(tSpace[peak]), 'o', color=(1,0,0,1))
+        ax2.plot(tSpace[peak], con[peak], 'o', color=(1,0,0,1))
+
+
+    plt.show()
+    """
+
+    """
     plt.plot(csx(tSpace), csy(tSpace))
 
     # Comp Boundary converted to XY
@@ -56,6 +194,10 @@ def main():
             (0.03993415704199533, 366.0542881303085),
             (175.83977103766549, 764.1079686968526),
             (477.5319123645307, 629.0467535497892)]
+    """
+
+    """
+    polyObj = Polygon.Polygon(poly)
 
     xVals = []
     yVals = []
@@ -71,7 +213,7 @@ def main():
     yVals.append(y)
     plt.plot(xVals, yVals)
     
-    circles = makeRandomCircles(30, wpxInit, wpyInit, poly)
+    circles = makeRandomCircles(30, wpxInit, wpyInit, polyObj)
 
     ax = plt.gca()
     for circle in circles:
@@ -79,10 +221,11 @@ def main():
         ax.add_patch(circle)
 
     plt.show()
+    """
 
-
+    """
     # Fix the intersections with the polygon
-    wpxNew, wpyNew, t = fixPolygonIntersections(wpxInit, wpyInit, t.tolist(), poly, circles)
+    wpxNew, wpyNew, t = fixCollisions(wpxInit, wpyInit, t.tolist(), polyObj, circles, 20)
 
     csx = CubicSpline(t, wpxNew)
     csy = CubicSpline(t, wpyNew)
@@ -99,8 +242,8 @@ def main():
 
     plt.plot(wpxNew, wpyNew, 'x', label = 'data', color = (0,0,0,1))
     plt.plot(xVals, yVals)
-
     plt.show()
+    """
 
     """
     # Starting Point will have some slope dependent on vehicle heading
@@ -179,9 +322,6 @@ def main():
         x, y = csx(collision[1]), csy(collision[1])
     """
 
-
-
-    plt.show()
 
     # Create a line through a pt of interest and the circle it is inside of
     # Create a new waypoint along the line

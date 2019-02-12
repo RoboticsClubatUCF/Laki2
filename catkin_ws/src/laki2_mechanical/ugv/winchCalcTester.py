@@ -6,14 +6,64 @@ from scipy import stats
 
 maxSpeed = 7
 brakeHeight = 7
-Kv = 1400
-Kv *= 2 * np.pi / 60
-hub = 0.17
-hub *= 0.0254
-spoolWidth = 3
 
+Kv = 1800
+Kv *= 2 * np.pi / 60
+
+hub = 0.45 / 2
+hub *= 0.0254
+
+spoolWidth = 0.55 * 0.0254
+
+print effHub(hub, 28.48, spoolWidth)/0.0254
+
+retVals = binaryDrop(6, Kv, hub, spoolWidth, 0.107, 0.01, 1000)
+
+tVals, yVals, yPrimeVals, tensionVals, peakPhaseVolt, peakRes1Volt, peakRes2Volt, peakRes1Pow, peakRes2Pow, peakMotorPow, peakCurrent, spoolRadius = retVals
+
+print "Time: ", tVals[-1]
+print "Pos: ", yVals[-1]
+print "Speed: ", yPrimeVals[-1]
+print "Spool Size: ", spoolRadius[-1]
+print "Max res1Pow: ", max(peakRes1Pow)
+print "Max res2Pow: ", max(peakRes2Pow)
+print "Max voltage: ", max(abs(min(peakPhaseVolt)), abs(max(peakPhaseVolt)))
+print "Max current: ", max(abs(min(peakCurrent)), abs(max(peakCurrent)))
+print "Max Tension: ", max(tensionVals)
+
+f, ((ax1, ax2, ax3, ax4), (ax5, ax6, ax7, ax8)) = plt.subplots(2, 4, sharey=False)
+
+ax1.plot(tVals, yVals)
+ax1.set_title("Height")
+
+ax2.plot(tVals, yPrimeVals)
+ax2.set_title("Speed")
+
+ax3.plot(tVals, peakCurrent)
+ax3.set_title("Current")
+
+ax4.plot(tVals, peakPhaseVolt)
+ax4.set_title("peakPhaseVolt")
+
+ax6.plot(tVals, peakRes1Pow)
+ax6.set_title("res1Power")
+
+ax5.plot(tVals, peakMotorPow)
+ax5.set_title("motorPower")
+
+ax7.plot(tVals, spoolRadius)
+ax7.set_title("spoolRadius")
+
+ax8.plot(tVals, tensionVals)
+ax8.set_title("tensionVals")
+
+plt.show()
+
+"""
 tVals, yVals, yPrimeVals, motorVolt, power, tensionVals = newDrop(brakeHeight, 
         maxSpeed, Kv, hub, spoolWidth) 
+
+
 
 f, ((ax1, ax2, ax3), (ax4, ax5, ax6)) = plt.subplots(2, 3, sharey=False)
 
@@ -38,7 +88,7 @@ ax5.plot(tVals, power)
 ax5.set_title("Power")
 
 plt.show()
-
+"""
 
 """
 # max Elec properties

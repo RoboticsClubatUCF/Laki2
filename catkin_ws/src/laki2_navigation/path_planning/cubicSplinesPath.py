@@ -4,14 +4,16 @@ import numpy as np
 import scipy
 import copy
 import Polygon
+import Polygon.Utils
 import random
 from scipy.interpolate import CubicSpline, interp1d
 from scipy.optimize import minimize
-from scipy import integrate
+from scipy import integrate, interpolate
 from scipy.misc import derivative
 import matplotlib.pyplot as plt
 from matplotlib.pyplot import Circle
 from matplotlib.collections import PatchCollection
+import time
 
 #----------------------------------------------------------------------------------#
 
@@ -37,11 +39,13 @@ from matplotlib.collections import PatchCollection
 #   ptOfInterest is the point between a par of intersection points that is closest 
 #       the the center of the circle
 
-def cubicSplineCircleCollisions(csx, csy, tVals, circle, segments=None):
+def cubicSplineCircleCollisions(csx, csy, circle, segments=None):
     # Equation of a circle:
     #   r^2 = (x - h)^2 + (y - k)^2
     # x is defined in terms of t by csx
     # y is defined in terms of t by csy
+
+    tVals = csx.x
 
     # collisions is the list to return
     collisions = []
@@ -249,17 +253,15 @@ def cubicSplineCircleCollisions(csx, csy, tVals, circle, segments=None):
 
 # Returns a list of collision tuples. 
 #   Each collision has the form (intersectionPts, ptOfInterest, polySeg)
-#   Where intersectionPts are the two pts that intersect the polygon. Only values
-#       between the intersection points are outside the polygon
-#   ptOfInterest is the point between a par of intersection points that is farthest 
+#   Where intersectionPts are the two values of the parameter that 
+#       intersect the polygon. Only values between the intersection points are 
 #       outside the polygon
+#   ptOfInterest is the point half way between the pair of intersection points. It 
+#       is usually the pt nearly the furthest outside of the polygon
 #   polySeg is the line segment of intersection.
 #       It is of the form ((x0, x1), (y0, y1))
 
-# TO DO: Pass this a Polygon object from the library, or both the list and Polygon
-#   object. Should be faster since it doesn't have to make the object every time
-
-def cubicSplinePolygonCollisions(csx, csy, tVals, poly, segments=None):
+def cubicSplinePolygonCollisions(csx, csy, polyObj, segments=None):
     # Helper Method:
     #   Returns True if given point is on line and false otherwise
     #   Endpoints are considered to be on the line
@@ -362,14 +364,14 @@ def cubicSplinePolygonCollisions(csx, csy, tVals, poly, segments=None):
     # x is defined in terms of t by csx
     # y is defined in terms of t by csy
 
+    tVals = csx.x
+
     # collisions is the list to return
     collisions = []
 
     intersections = []
 
-    polyObj = Polygon.Polygon(poly)
-
-    resetCritPts = True
+    poly = Polygon.Utils.pointList(polyObj)
 
     if (segments == None):
         segments = range(len(tVals) - 1)
@@ -461,162 +463,19 @@ def cubicSplinePolygonCollisions(csx, csy, tVals, poly, segments=None):
             #   Waypoint on the line
             #   polygon that completely swallows cubic spline
             #   polygon that intersects the same spline twice
-
-            # Past this line is to find the pointOfInterest associated with each
-            #   pair of intersection points
-            # Nothing has been tested yet
             
             if (len(intersections) > 0):
-                # Only set critPts to the empty list if the points inside are no 
-                #   longer needed
-                if resetCritPts:
-                    critPts = []
-
-                # Equation of a line is:
-                #   y = m*x + k
-                
-                # Alternate equation of a line:
-                #   E * x + F * y + G = 0
-                
-                # Distance from point (x0, y0) to line:
-                #   dist = abs(E*x0 + F*y0 + G) / sqrt(E^2 + F^2)
-                
-                # Alternative Form:
-                #   dist = sqrt((E*x0 + F*y0 + G)^2) / sqrt(E^2 + F^2)
-                #   dist^2 = (E*x0 + F*y0 + G)^2) / (E^2 + F^2)
-
-                # From the first eqution:
-                #   m * x + -1 * y + k = 0
-                
-                # Any point (x0, y0) of the cubic spline is a function of t:
-                #   x = At^3 + Bt^2 + Ct + D
-                #   y = at^3 + bt^2 + ct + d
-
-                # Therefore:
-                #   dist^2 = [(m * (At^3 + Bt^2 + Ct + D) + 
-                #           -1 * (at^3 + bt^2 + ct + d) + k]^2 / [m^2 + 1]
-
-                # Critical Points where dist is at a maximum or minimum:
-                #   2 * dist * d(dist)/dt = 
-                #       2 * [m * (3*A*t^2 + 2*B*t + C) - (3*t^2 + 2*b*t + c)] * 
-                #       [(m * (At^3 + Bt^2 + Ct + D) - (at^3 + bt^2 + ct + d) + k] * 
-                #       1 / [m^2 + 1]
-
-                #   Solve for when d(dist)/dt = 0:
-                #   2, dist, and [m^2 +1] always non-0 between intersection interval
-                #       0 = [m * (3*A*t^2 + 2*B*t + C) - (3*t^2 + 2*b*t + c)]
-                #       or
-                #       0 = (m * (At^3 + Bt^2 + Ct + D) - (at^3 + bt^2 + ct + d) + k
-                #   The second term is just the intersection points, which are 
-                #       garaunteed to be local minima (dist = 0)
-                
-                # Algebraic Manipulation:
-                #       0 = (3*m*A - 3*a) * t^2 + (2*m*B - 2*b)* t + (m*C - c)
-
-                if ((x[0] - x[1]) == 0):
-                    coeff = [3*tX[0],
-                            2*tX[1],
-                            tX[2]]
-
-                else:
-                    coeff = [3*m*tX[0] - 3*tY[0],
-                            2*m*tX[1] - 2*tY[1],
-                            m*tX[2] - tY[2]]
-
-                # Find the roots of the critical points equation
-                roots = np.roots(coeff)
-
-                # Weed out the garbage points
-                for root in roots:
-                    # Doesn't count if it is an imaginary root
-                    if not np.isreal(root):
-                        continue
-
-                    # The root must be between the start and end of this segment
-                    if (root >= 0 and root <= (tVals[i+1] - tVals[i])):
-                        critPts.append(root.real + tVals[i])
-
-                isOutside = (isPtOnLine((x, y), (tVals[i], tVals[i])) or 
-                                    polyObj.isInside(tVals[i], tVals[i]))
-
-                if isOutside:
-                    critPts.append(tVals[i])
-
-                isOutside = (isPtOnLine((x, y), (tVals[i+1], tVals[i+1])) or 
-                                    polyObj.isInside(tVals[i+1], tVals[i+1]))
-
-                if isOutside:
-                    critPts.append(tVals[i+1])
-
-                # Sort the crit points to manipulations things easier
-                critPts.sort()
-
-                # Boolean for if the next knot is strictly outside the polygon
-                isNextKnotOutside = (isPtOnLine((x, y), (tVals[i+1], tVals[i+1])) or 
-                                    polyObj.isInside(tVals[i+1], tVals[i+1]))
-
-                # If next knot is outside the polygon, don't reset the crit points
-                if (isNextKnotOutside):
-                    resetCritPts = False
-
-                    # Unless this is the last segment, continue to the next segment
-                    if (i != len(tVals) - 2):
-                        continue
-
                 # While intersection points are still in the queue, process them
                 while (len(intersections) > 1):
-                    dist = -np.inf
-                    closestPt = -1
-
-                    # Note: only possible this easisly because critPts and 
-                    #   intersections are both respectively sorted
-
-                    # Find the closest critical point between the current pair of
-                    #   intersection points
-                    for crit in critPts:
-                        # If this critical point is less than the first intersection 
-                        #   point, continue to the next one
-                        if (crit <= intersections[0]):
-                            continue
-
-                        # If this critical point is greater than the second 
-                        #   intersection point, all future ones will also be 
-                        #   greater, so the closest point between the intersection 
-                        #   points has already been found
-                        if  (crit >= intersections[1]):
-                            break
-
-                        # Distance from point (x0, y0) to line:
-                        #   dist = abs(m*x0 + -1*y0 + k) / sqrt(m^2 + 1)
-
-                        # Otherwise, find the distance from this crit point to the 
-                        #   polygon
-                        newDist = abs(m*csx(crit) - csy(crit) + k) 
-                        newDist /= np.sqrt(m**2 + 1)
-
-                        # Compare it to the previous best and update if necessary
-                        if (newDist > dist):
-                            dist = newDist
-                            closestPt = crit                
-
                     # Add this collision to the collisions return list
                     collisions.append((
                             (intersections[0], intersections[1]),
-                            closestPt,
+                            (intersections[0] + intersections[1])/2,
                             (x, y)))
 
                     # Delete the leading pair of intersection points              
                     del intersections[0]
                     del intersections[0]
-
-                    # Since the statement before this while loop was not triggered, 
-                    #   it is known that this is not an intermediate knot outside
-                    #   the polygon.
-                    # Because of that, there will be an even number of intersection
-                    #   points between the very start of the spline and the end of 
-                    #   the current segement. Therefore, the intersections queue 
-                    #   will be completely processsed and the critPts can be reset
-                    resetCritPts = True
 
     return collisions
 
@@ -631,6 +490,10 @@ def cubicSplinePolygonCollisions(csx, csy, tVals, poly, segments=None):
 
 # i is the index of the spline segment that needs fixing
 
+# allowedTime is the time allowed for the function to run in seconds
+# NOTE: Function is written that it will continue past the allowed time if no
+#   solution was found in the allowed time
+
 # Through random guesses, this function finds individual intermediate waypoints that 
 #   could be added to the given spline segment in order to stop it from having 
 #   collisions.
@@ -639,18 +502,18 @@ def cubicSplinePolygonCollisions(csx, csy, tVals, poly, segments=None):
 #   either until the max number of valid solutions is found, or the max number of
 #   allowed guesses it hit and there is at least 1 solution
 
-# TO DO: Create a potential fields solution as a heuristic (in another function) 
-#   Potential fields -> stream function.
-#   Find streamline(s) that get to the goal
-#   Randomly sample points along the streamline(s) 
-
 # TO DO: Don't use points that make the previously fixed splines collide again,
 #   and/or need to do slight optimization of intermediate waypoints
 
-# TO DO: Just set maxGuesses, not maxSolutions. Maybe even set a maxTime.
-#   More guesses = better so use all the alloted time.
+# TO DO: Add heuristics to guesses
 
-def monteCarloSearch(wpx, wpy, tVals, poly, circles, i, maxGuesses, maxSolutions):
+# TO DO: Create a polygon with which to guess points within
+# p.sample(rng); 0.0 <= rng <= 1.0
+
+def monteCarloSearch(wpx, wpy, tVals, polyObj, circles, i, allowedTime):
+    # Start time of search
+    startTime = time.time()
+
     # Make a copy of the inputs so as to not destory them
     wpxNew = copy.copy(wpx)
     wpyNew = copy.copy(wpy)
@@ -673,25 +536,17 @@ def monteCarloSearch(wpx, wpy, tVals, poly, circles, i, maxGuesses, maxSolutions
 
     dist = np.linalg.norm([(wpxNew[i], wpyNew[i]), (wpxNew[i+1], wpyNew[i+1])])
 
-    # This keeps track of the number of guesses taken
-    guessCounter = 0
-
     # This keeps track of the number of points that create a valid solution
     solutions = []
 
-    # Search for solutions until the max number of solutions is found
-    while (len(solutions) < maxSolutions):
-        # If the number of guesses exceeds the maxGuesses and there is at least one
-        #   solution, stop searching for solutions
-        if (guessCounter > maxGuesses and len(solutions) > 0):
-            break
+    # Search for solutions until the allowed time is up and at least one solution
+    #   has been found
 
+    while (((time.time() - startTime) < allowedTime) or (len(solutions) < 1)):
         # TO DO: Add some better heuristic to this to make gueses more likely to
         #   stick and to make them better in general
         randPt = (seedPt[0] + dist/4 * np.random.normal(), 
                 seedPt[1] + dist/4 * np.random.normal())
-
-        guessCounter += 1
 
         wpxNew[i+1] = randPt[0]
         wpyNew[i+1] = randPt[1]
@@ -701,7 +556,7 @@ def monteCarloSearch(wpx, wpy, tVals, poly, circles, i, maxGuesses, maxSolutions
 
         # Check if there are any collisions with the polygon. If so, go back
         #   around to generate a new random point
-        if (cubicSplinePolygonCollisions(csx, csy, tNew, poly, [i, i+1])):
+        if (cubicSplinePolygonCollisions(csx, csy, polyObj, [i, i+1])):
             continue
 
         # Check if there are any collisions with the circle. If so, go back
@@ -709,7 +564,7 @@ def monteCarloSearch(wpx, wpy, tVals, poly, circles, i, maxGuesses, maxSolutions
         circCollision = False
         for circle in circles:
             # Check for circle collisions
-            if (cubicSplineCircleCollisions(csx, csy, tNew, circle, [i, i+1])):
+            if (cubicSplineCircleCollisions(csx, csy, circle, [i, i+1])):
                 circCollision = True
             
             # If at any point there is a circle collision, stop looking
@@ -732,7 +587,6 @@ def monteCarloSearch(wpx, wpy, tVals, poly, circles, i, maxGuesses, maxSolutions
 # wpx and wpy are the lists of waypoints
 # tVals are the parameter values
 
-# poly is a list of (x, y) vertice points of the outer polygon boundary
 # circles is set of circles. Circles are of the form ((h, k), r) where (h, k) is the 
 #   center and r is the radius
 
@@ -741,22 +595,7 @@ def monteCarloSearch(wpx, wpy, tVals, poly, circles, i, maxGuesses, maxSolutions
 #   Feels like a single polygon intersection can be fixed with a single 
 #       intermediate waypoint
 
-# TO DO:
-#   (In another function) To fix the circle obstacles, may need one waypoint per 
-#       circle collision. Try putting the waypoint on both sides of the circle to 
-#       see whether shifting cw or ccw is better
-
-# Super TO DO:
-#   This is going probably going to have to become some search algorithm
-#   'Legal Action Generator' function almost complete 
-#       (monteCarloSearch finds points that work, needs to make sure it doesn't mess 
-#       up downstream segements)
-#   'State Generator' function is complete (scipy's cubic spline generator)
-#   'Cost Function' not started. For now probs minimize sum of square of curvature
-#   'A*' should be able to be copied from CS188 files
-#   'Actions' can be thought of as the additional points between real waypoints
-
-def fixPolygonIntersections(wpx, wpy, tVals, poly, circles):
+def fixCollisions(wpx, wpy, tVals, polyObj, circles, allowedTime):
     csx = CubicSpline(tVals, wpx)
     csy = CubicSpline(tVals, wpy)
 
@@ -765,75 +604,218 @@ def fixPolygonIntersections(wpx, wpy, tVals, poly, circles):
     wpxNew = copy.copy(wpx)
     tNew = copy.copy(tVals)
 
-    #polyObj = Polygon.Polygon(poly)
+    # Count all the splines segment that have collisions
+    numCollisions = 0
 
-    # Start with the first spline segment
+    # Iterate through all segments to count the number of troublesome segments
+    for j in xrange(len(wpx)-1):
+        # Find collisions between the polygon and the current spline segment
+        if (len(cubicSplinePolygonCollisions(csx, csy, polyObj, [j])) > 0):
+            numCollisions += 1
+        else:
+            for circle in circles:
+                if (len(cubicSplineCircleCollisions(csx, csy, circle, [j])) > 0):
+                    numCollisions += 1
+                    break
+
     i = 0
 
-    # TO DO: Probably want it to loop back around to check real quick that a 
-    #   previous spline doesn't get screwed up
     # Going to iterate through all segments of the spline
     while (i < (len(wpxNew) - 1)):
-        # Find collisions between the polygon and the current spline segment
-        collisions = cubicSplinePolygonCollisions(csx, csy, tNew, poly, [i])
+        print "i: ", i
+        print "wpxNew: ", len(wpxNew)
+        collisions = []
 
-        # If there is a collision
+        # Find collisions between the polygon and the current spline segment
+        collisions = cubicSplinePolygonCollisions(csx, csy, polyObj, [i])
+
+        # If there is a collision with the polygon, fix it
         if len(collisions): 
             # Put the intermediate point at the point of interest
             tNew.insert(i+1, collisions[0][1])
 
-            solutions = monteCarloSearch(wpxNew, wpyNew, tNew, poly, circles, i, 3000, 20)
-            print "Found"
+            # TO DO:
+            # Modify monte carlo such that it does not mess up previous segments
+            # Modify monte carlo such that it generates more points depending on the
+            #   a) number of collisions with the polygon and circles
+            #   b) arc length of the segment
+            solutions = monteCarloSearch(wpxNew, wpyNew, tNew, polyObj, circles, i, 
+                    (allowedTime / (2*numCollisions)))
+            print "Found ", len(solutions), " Solutions"
 
-            # TO DO: Evaulate all points in solutions to pick the best
-            #   Do that here instead of just taking the first solution
-            bestPt = solutions[0]
-            wpxNew.insert(i+1, bestPt[0])
-            wpyNew.insert(i+1, bestPt[1])
+            # TO DO:
+            #   Rn best point just returns the single 'best' point
+            #   Modify this to return multiple pts and do a tree expansion on them 
+            newPt = bestPoint(wpxNew, wpyNew, tNew, solutions, i+1, polyObj, circles)
+            wpxNew.insert(i+1, newPt[0])
+            wpyNew.insert(i+1, newPt[1])
 
             csx = CubicSpline(tNew, wpxNew)
             csy = CubicSpline(tNew, wpyNew)
-        
-            # TO DO: will eventually need to remove the plotting
-            # Plot parametric cubic splines
 
-            plt.plot(wpxNew, wpyNew, 'x', label = 'data', color = (0,0,0,1))
+            plotStuff(polyObj, None, circles, wpxNew, wpyNew, tNew)
+            continue
 
-            # Plot the path
-            s = 0.01
-            tSpace = np.arange(tNew[0], tNew[len(tNew)-1] + s, s)
-            plt.plot(csx(tSpace), csy(tSpace))
-            
-            # Plot the circles
-            ax = plt.gca()
-            for circle in circles:
-                circle = Circle(circle[0], circle[1], facecolor='r')
-                ax.add_patch(circle)
+        for circle in circles:    
+            collisions = cubicSplineCircleCollisions(csx, csy, circle, [i])
+            if len(collisions):
+                break
 
-            # Plot the polygon
-            xVals = []
-            yVals = []
-                    
-            for pt in poly:
-                x, y = pt
+        # If there is a collision with the polygon, fix it
+        if len(collisions): 
+            # Put the intermediate point at the point of interest
+            tNew.insert(i+1, collisions[0][1])
 
-                xVals.append(x)
-                yVals.append(y)
-            
-            x, y = poly[0]
-            xVals.append(x)
-            yVals.append(y)
-            plt.plot(xVals, yVals)
+            # TO DO:
+            # Modify monte carlo such that it does not mess up previous segments
+            # Modify monte carlo such that it generates more points depending on the
+            #   a) number of collisions with the polygon and circles
+            #   b) arc length of the segment
+            solutions = monteCarloSearch(wpxNew, wpyNew, tNew, polyObj, circles, i, 
+                    (allowedTime / (2*numCollisions)))
+            print "Found ", len(solutions), " Solutions"
 
-            plt.show()
+            # TO DO:
+            #   Rn best point just returns the single 'best' point
+            #   Modify this to return multiple pts and do a tree expansion on them 
+            newPt = bestPoint(wpxNew, wpyNew, tNew, solutions, i+1, polyObj, circles)
+            wpxNew.insert(i+1, newPt[0])
+            wpyNew.insert(i+1, newPt[1])
 
+            csx = CubicSpline(tNew, wpxNew)
+            csy = CubicSpline(tNew, wpyNew)
 
-        # Move on to the next spline segment
+            plotStuff(polyObj, None, circles, wpxNew, wpyNew, tNew)
+
         i += 1
 
     return (wpxNew, wpyNew, tNew)
 
 #----------------------------------------------------------------------------------#
+
+def plotStuff(polyObj=None, poly=None, circles =None, wpx=None, wpy=None, tVals=None, 
+                csx=None, csy=None):
+    
+    if (poly == None and polyObj != None): 
+        poly = Polygon.Utils.pointList(polyObj)
+
+    if (poly != None):
+        # Plot the polygon
+        xVals = []
+        yVals = []
+                
+        for pt in poly:
+            x, y = pt
+
+            xVals.append(x)
+            yVals.append(y)
+        
+        x, y = poly[0]
+        xVals.append(x)
+        yVals.append(y)
+        plt.plot(xVals, yVals)
+    
+    if (circles != None):
+        # Plot the circles
+        ax = plt.gca()
+        for circle in circles:
+            circle = Circle(circle[0], circle[1], facecolor='r')
+            ax.add_patch(circle)
+
+    if (wpx != None and wpy != None):
+        plt.plot(wpx, wpy, 'x', label = 'data', color = (0,0,0,1))
+
+        if (tVals != None):
+            if (csx == None):
+                csx = CubicSpline(tVals, wpx)
+
+            if (csy == None):
+                csy = CubicSpline(tVals, wpy)
+
+    if (tVals == None and csx != None):
+        tVals = csx.x
+
+    if (csx != None and csy != None and tVals != None):
+        # Plot the path
+        s = 0.01
+        tSpace = np.arange(tVals[0], tVals[-1] + s, s)
+        plt.plot(csx(tSpace), csy(tSpace))
+
+    plt.show()
+    return
+
+#----------------------------------------------------------------------------------#
+
+def bestPoint(wpx, wpy, tVals, points, index, polyObj, circles):
+    scores = []
+
+    lengths = []
+    curvs = []
+
+    for point in points:
+        wpxNew = copy.copy(wpx)
+        wpyNew = copy.copy(wpy)
+        wpxNew.insert(index, point[0])
+        wpyNew.insert(index, point[1])
+        csx = CubicSpline(tVals, wpxNew)
+        csy = CubicSpline(tVals, wpyNew)
+
+        length = arcLength(csx, csy, csz=None)
+
+        # Tried curvature, doesn't pick particularly good options
+        curv = integrate.quad(lambda x: curvature(x, csx, csy), 
+                           tVals[0], tVals[-1], limit = 75)[0]
+        
+        # Curvature varies with the scale of t, to make it mostly invariant with t, 
+        #   divide it by the final t value
+        invariant_curv = curv / tVals[-1]
+        
+        lengths.append(length)
+        curvs.append(invariant_curv)
+
+    avgLength = np.mean(lengths)
+    avgCurv = np.mean(curvs)
+
+    for i in xrange(len(points)):
+        length = lengths[i] - avgLength
+        curv = curvs[i] - avgCurv
+        point = points[i]
+
+        # Score here is set with meta-parameters
+        # Choosen by operator based on desired output
+        # By setting alpha it changes how much weight is put on length vs curvature
+
+        # TO DO:
+        #   Don't really want this to score the arc length and curvature, want it
+        #   to score the change in arc length and curvature compared to the previous
+        #   iteration without the new point. Score % change to make it parametric
+
+        # TO DO:
+        #   Possibly change this to a normal distribution with standard deviations,
+        #       then the 'arc length' is the number of standard deviations away
+        #       from the average, etc. This would be 'more' 0 - 1
+
+        alpha = 2e8
+        print "length: ", np.round(length, 4), "\talpha * curv: ", np.round(alpha*curv, 4)
+        score = length + alpha * curv
+
+        scores.append((score, point))
+
+
+    scores.sort()
+
+    for i in xrange(len(scores)):
+        wpxNew = copy.copy(wpx)
+        wpyNew = copy.copy(wpy)
+        wpxNew.insert(index, scores[i][1][0])
+        wpyNew.insert(index, scores[i][1][1])
+
+        #plotStuff(polyObj, None, circles, wpxNew, wpyNew, tVals)
+
+    return scores[0][1]
+
+#----------------------------------------------------------------------------------#
+
 # Given 3 lists, a list for each of the x, and y coordinates of waypoints, as well
 #   as an init spacing for the parameter. Initial spacing must be stricly increasing
 # Lists need to be of the same length
@@ -921,13 +903,16 @@ def optimizeParameterSpacing(wpx, wpy, tVals, costFunc):
 # Returns the arc length of the parametric line between the bounds of the parameter
 # Supports 2D and 3D splines
 
-def arcLength(tVals, csx, csy, csz=None):
+# Written by Andrew Schroeder on 9/13/2018
+
+def arcLength(csx, csy, csz=None):
+    tVals = csx.x
     totalLength = 0
 
     # If there was no z spline given, make it sit flat on the x-y plane
     # The arc length will just be from the x and y splines
     if (csz == None):
-        wpz = csx.x
+        wpz = copy.copy(csx.x)
         wpz.fill(0)
         csz = CubicSpline(tVals, wpz)
 
@@ -949,14 +934,12 @@ def arcLength(tVals, csx, csy, csz=None):
 
         def fz_dt(t): 
             return 3*tZ[0]*t**2 + 2*tZ[1]*t + tZ[2]
-        
+
         # Integrate the square root of the sum of dX^2, dY^2, dZ^2 
         #   with respect to t from t = i to t = i + 1
-        length = integrate.quadrature(
-                lambda p: np.sqrt(fx_dt(p)**2 + fy_dt(p)**2 + fz_dt(p)**2), 
-                tVals[i], tVals[i + 1])
-        
-        length = length[0]
+        length = integrate.quad(
+                        lambda p: np.sqrt(fx_dt(p)**2 + fy_dt(p)**2 + fz_dt(p)**2), 
+                        tVals[i], tVals[i + 1], limit = 75)[0]
 
         # add the segment length to the total path length
         totalLength += length
@@ -965,14 +948,175 @@ def arcLength(tVals, csx, csy, csz=None):
 
 #----------------------------------------------------------------------------------#
 
+# csx is the cubic spline of x as a function of t
+# csy is the cubic spline of y as a function of t
+
+# tVals is the list of parametric points serving as the knots for the cubic spline
+
+# t is a location on the spline
+
+# Returns the concavity of the spline at a given location
+
+# Written by Alex Damis on 01/09/19
+
+def concavity(t, csx, csy):
+        tVals = csx.x
+        i = 0
+
+        for k in range(len(tVals)):
+            if tVals[k] > t:
+                i = k - 1
+                break
+
+        tX = [csx.c[0][i], csx.c[1][i], csx.c[2][i], csx.c[3][i]]
+        tY = [csy.c[0][i], csy.c[1][i], csy.c[2][i], csy.c[3][i]]
+        
+        # First Derivative of tX and tY
+        dydt = np.polyder(tY)
+        dxdt = np.polyder(tX)
+
+        # Second Derivative of tX and tY
+        d2ydt2 = np.polyder(dydt)
+        d2xdt2 = np.polyder(dxdt)
+
+        # Quotient rule
+        numer = np.polysub(np.polymul(d2ydt2, dxdt), np.polymul(d2xdt2, dydt))
+        denom = np.polymul(dxdt, dxdt)
+
+        q, r = np.polydiv(numer, denom)
+
+        q_val = np.polyval(q, t)
+        r_val = np.polyval(r, t) / np.polyval(denom, t)
+
+        # Find all the spikes here. Not done, this doesn't work yet
+        roots = np.roots(denom)
+        for root in roots:
+            # If the complex part of the root is significant, ignore that root
+            # Significant is defined as 0.001% of the value of the root
+            if abs(np.imag(root)) > abs(root/1e5):
+                continue
+
+            # Otherwise assume the imaginary portion is within numerical tolerance
+            else:
+                root = np.real(root)
+
+            # If the root is close to t, it is a pole
+            # Close is defined as 0.1% of the value of t
+            if (abs(root - t) < abs(t/1e3)):
+                print "Infinity: ", np.real(root)
+
+        return q_val + r_val
+
+        """
+
+        # Quotient rule
+        numer_eq = np.polysub(np.polymul(d2ydt2, dxdt), np.polymul(d2xdt2, dydt))
+        numer_val = np.polyval(numer_eq, t)
+
+        denom_eq = np.polymul(dxdt, dxdt)
+        denom_val = np.polyval(denom_eq, t)
+
+        return numer_val / denom_val
+        """
+
+#----------------------------------------------------------------------------------#
+
+def center_of_curvature(t, csx, csy):
+    tVals = csx.x
+    i = 0
+
+    for k in range(len(tVals)):
+        if tVals[k] > t:
+            i = k - 1
+            break
+
+    # Curvature = abs(T(t) / ds)
+    #   where T is the unit tangent vector and ds is the arc length
+    # This can be re-written as
+    #   Curvature = abs(r'(t) x r"(t)) / (abs(r'(t))^3)
+    #   where r is the function
+
+    rX = [csx.c[0][i], csx.c[1][i], csx.c[2][i], csx.c[3][i]]
+    rY = [csy.c[0][i], csy.c[1][i], csy.c[2][i], csy.c[3][i]]
+
+    # First derivative of rX, rY, and rZ
+    dxdt = np.polyder(rX)
+    dydt = np.polyder(rY)
+
+    # Second derivative of rX, rY, and rZ
+    d2xdt2 = np.polyder(dxdt)
+    d2ydt2 = np.polyder(dydt)
+
+    dxdt = np.polyval(dxdt, t)
+    dydt = np.polyval(dydt, t)
+    d2xdt2 = np.polyval(d2xdt2, t)
+    d2ydt2 = np.polyval(d2ydt2, t)
+
+    Cx = csx(t) - dydt * (dxdt**2 + dydt**2) / (dxdt*d2ydt2 - d2xdt2*dydt)
+    Cy = csy(t) + dxdt * (dxdt**2 + dydt**2) / (dxdt*d2ydt2 - d2xdt2*dydt)
+
+    return (Cx, Cy)
+
+#----------------------------------------------------------------------------------#
+
+def curvature(t, csx, csy, csz=None):
+    tVals = csx.x
+    i = 0
+
+    for k in range(len(tVals)):
+        if tVals[k] > t:
+            i = k - 1
+            break
+
+    """
+    # If there was no z spline given, make it sit flat on the x-y plane
+    # The arc length will just be from the x and y splines
+    if (csz == None):
+        wpz = copy.copy(csx.x)
+        wpz.fill(0)
+        csz = CubicSpline(tVals, wpz)
+    """
+
+    # Curvature = abs(T(t) / ds)
+    #   where T is the unit tangent vector and ds is the arc length
+    # This can be re-written as
+    #   Curvature = abs(r'(t) x r"(t)) / (abs(r'(t))^3)
+    #   where r is the function
+
+    rX = [csx.c[0][i], csx.c[1][i], csx.c[2][i], csx.c[3][i]]
+    rY = [csy.c[0][i], csy.c[1][i], csy.c[2][i], csy.c[3][i]]
+    #rZ = [csz.c[0][i], csz.c[1][i], csz.c[2][i], csz.c[3][i]]
+
+    # First Derivative of rX, rY, and rZ
+    dxdt = np.polyder(rX)
+    dydt = np.polyder(rY)
+    #dzdt = np.polyder(rZ)
+
+    drdt = [np.polyval(dxdt, t), np.polyval(dydt, t)] #, np.polyval(dzdt, t)]
+
+    d2xdt2 = np.polyder(dxdt)
+    d2ydt2 = np.polyder(dydt)
+    #d2zdt2 = np.polyder(dzdt)
+
+    d2rdt2 = [np.polyval(d2xdt2, t), np.polyval(d2ydt2, t)] #, np.polyval(d2zdt2, t)]
+
+    numer = np.linalg.norm(np.cross(d2rdt2, drdt))
+    denom = abs(np.linalg.norm(drdt))**3
+
+    #To DO:
+    #   the rest
+    return numer / denom
+
+#----------------------------------------------------------------------------------#
+
 # Helper function for main. Returns a list of circle tuples
 # Each circle tuple is of the form ((h, k), r) where (h, k) is the center and r is
 #   the radius
 
-def makeRandomCircles(numCircles, wpx, wpy, poly):
+def makeRandomCircles(numCircles, wpx, wpy, polyObj):
     import random
 
-    polyObj = Polygon.Polygon(poly)
+    poly = Polygon.Utils.pointList(polyObj)
 
     # Put given waypoints into a list of (x, y) points
     pts = []
