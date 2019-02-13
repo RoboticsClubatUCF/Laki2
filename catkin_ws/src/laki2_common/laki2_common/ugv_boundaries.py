@@ -12,7 +12,6 @@ latPos, lonPos = (38.14586, 76.42639)
 x, y = gps_to_xy(latOrig, lonOrig, latPos, lonPos)
 plt.plot(x, y, 'x', label = 'data', color = (0,0,0,1))
 
-
 latPos, lonPos = (38.14617, 76.42642)
 x, y = gps_to_xy(latOrig, lonOrig, latPos, lonPos)
 plt.plot(x, y, 'o', label = 'data', color = (0,0,0,1))

@@ -44,20 +44,25 @@ def cubicSplineCircleCollisions(csx, csy, circle, segments=None):
     #   r^2 = (x - h)^2 + (y - k)^2
     # x is defined in terms of t by csx
     # y is defined in terms of t by csy
-
+    
+    # Cubic spline object stores parameter values
     tVals = csx.x
 
     # collisions is the list to return
     collisions = []
 
+    # Create a list object to store intersections with the circle
     intersections = []
 
+    # Find the distance from the first endpoint to the center of the circle
     distToInitPt = np.linalg.norm([(csx(tVals[0]) - circle[0][0]), 
             (csy(tVals[0]) - circle[0][1])])
 
+    # Find the distance from the last endpoint to the center of the circle
     distToFinPt = np.linalg.norm([(csx(tVals[-1]) - circle[0][0]), 
             (csy(tVals[-1]) - circle[0][1])])
 
+    # Boolean value for logic
     resetCritPts = True
 
     # If nothing for segments is given, iterate throught the entirety of the list
@@ -79,7 +84,7 @@ def cubicSplineCircleCollisions(csx, csy, circle, segments=None):
 
         # Now, the equation can be of the form:
         #   r^2 = (tX)^2 + (tY)^2
-        # Re-arrange to the following form and solve for x:
+        # Re-arrange to the following form and solve for t:
         #   0 = (tX)^2 + (tY)^2 - r^2
 
         tX2 = np.polymul(tX, tX)
@@ -87,6 +92,7 @@ def cubicSplineCircleCollisions(csx, csy, circle, segments=None):
         coeff = np.polyadd(tX2, tY2)
         coeff = np.polysub(coeff, [circle[1]**2])
 
+        # Finding the roots of the equation will find the para
         roots = np.roots(coeff)
 
         # Weed out the garbage points
@@ -329,19 +335,14 @@ def cubicSplinePolygonCollisions(csx, csy, polyObj, segments=None):
         #print ("(y3 - b): ", (y3 - b), "(slope * x3): ", (slope * x3))
 
         if (np.isclose((y3 - b), (slope * x3), 0, epsilon)):
-            #print ("Is on line")
-
             # Check that the point is within the bounds of the segment
             if isInBounds(pt):
-                #print ("Is within Bounds")
                 return True
 
             else:
-                #print ("Is NOT within Bounds")
                 return False
 
         else:
-            #print ("Is NOT on line")
             return False
 
     # Equation of a line:
@@ -623,14 +624,14 @@ def fixCollisions(wpx, wpy, tVals, polyObj, circles, allowedTime):
             # Modify monte carlo such that it generates more points depending on the
             #   a) number of collisions with the polygon and circles
             #   b) arc length of the segment
-            solutions = monteCarloSearch(wpxNew, wpyNew, tVals, collisions[0][1], 
+            solutions = monteCarloSearch(wpxNew, wpyNew, tNew, collisions[0][1], 
                     polyObj, circles, i, (allowedTime / (2*numCollisions)))
             print "Found ", len(solutions), " Solutions"
 
             # TO DO:
             #   Rn best point just returns the single 'best' point
             #   Modify this to return multiple pts and do a tree expansion on them 
-            newPt = bestPoint(wpxNew, wpyNew, tVals, collisions[0][1], solutions, 
+            newPt = bestSolution(wpxNew, wpyNew, tNew, collisions[0][1], solutions, 
                     i+1, polyObj, circles)
             
             wpxNew.insert(i+1, newPt[0])
@@ -664,7 +665,7 @@ def fixCollisions(wpx, wpy, tVals, polyObj, circles, allowedTime):
             # TO DO:
             #   Rn best point just returns the single 'best' point
             #   Modify this to return multiple pts and do a tree expansion on them 
-            newPt = bestPoint(wpxNew, wpyNew, tNew, collisions[0][1], solutions, 
+            newPt = bestSolution(wpxNew, wpyNew, tNew, collisions[0][1], solutions, 
                     i+1, polyObj, circles)
 
             wpxNew.insert(i+1, newPt[0])
@@ -735,7 +736,14 @@ def plotStuff(polyObj=None, poly=None, circles =None, wpx=None, wpy=None, tVals=
 
 #----------------------------------------------------------------------------------#
 
-def bestPoint(wpx, wpy, tVals, newTval, points, index, polyObj, circles):
+def bestSolution(wpx, wpy, tVals, newTval, points, index, polyObj, circles):
+    # Calculate the length and curvature of the path without modification
+    csx = CubicSpline(tVals, wpx)
+    csy = CubicSpline(tVals, wpy)
+    baseLen = length = arcLength(csx, csy, csz=None)
+    baseCurv = integrate.quad(lambda x: curvature(x, csx, csy), tVals[0], tVals[-1], 
+            limit = 75)[0]
+
     scores = []
 
     lengths = []
@@ -755,45 +763,29 @@ def bestPoint(wpx, wpy, tVals, newTval, points, index, polyObj, circles):
 
         length = arcLength(csx, csy, csz=None)
 
-        # Tried curvature, doesn't pick particularly good options
         curv = integrate.quad(lambda x: curvature(x, csx, csy), 
-                           tNew[0], tVals[-1], limit = 75)[0]
+                           tNew[0], tNew[-1], limit = 75)[0]
         
-        # Curvature varies with the scale of t, to make it mostly invariant with t, 
-        #   divide it by the final t value
-        invariant_curv = curv / tVals[-1]
-        
-        lengths.append(length)
-        curvs.append(invariant_curv)
-
-    avgLength = np.mean(lengths)
-    avgCurv = np.mean(curvs)
+        lengths.append((baseLen - length) / baseLen)
+        curvs.append((baseCurv - curv) / baseCurv)
 
     for i in xrange(len(points)):
-        length = lengths[i] - avgLength
-        curv = curvs[i] - avgCurv
+        length = lengths[i]
+        curv = curvs[i]
         point = points[i]
 
         # Score here is set with meta-parameters
         # Choosen by operator based on desired output
         # By setting alpha it changes how much weight is put on length vs curvature
 
-        # TO DO:
-        #   Don't really want this to score the arc length and curvature, want it
-        #   to score the change in arc length and curvature compared to the previous
-        #   iteration without the new point. Score % change to make it parametric
+        # TO DO: Modify this so it calculates the energy of the path
+        # 
 
-        # TO DO:
-        #   Possibly change this to a normal distribution with standard deviations,
-        #       then the 'arc length' is the number of standard deviations away
-        #       from the average, etc. This would be 'more' 0 - 1
-
-        alpha = 2e8
+        alpha = 0.3
         print "length: ", np.round(length, 4), "\talpha * curv: ", np.round(alpha*curv, 4)
-        score = length + alpha * curv
+        score = length + alpha * np.sign(curv) * np.sqrt(abs(curv))
 
         scores.append((score, point))
-
 
     scores.sort()
 
