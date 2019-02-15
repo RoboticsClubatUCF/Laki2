@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 
-from smbus2 import SMBus
 from enum import Enum
 
 class StandardCommands(Enum):
@@ -172,8 +171,8 @@ class DataFlashFields(Enum):
     #MANUFACTURER INFO, 32 bytes of whatever you want I guess
     MANUFACTUERERINFOSTART = (58, 0)
     #IT CONFIG
-    LOADSELECT = (80, 0) #(number, 0 to 255)
-    LOADMODE = (80, 1) #(number, 0 to 255)
+    LOADSELECT = (80, 0) #(number, 0 to 255) 
+    LOADMODE = (80, 1) #(number, 0 to 255) 0 is constant current, 1 is constant power
     RESCURRENT = (80, 10) #(mA, 0 to 1000)
     MAXRESFACTOR = (80, 14) #(number, 0 to 255)
     MINRESFACTOR = (80, 15) #(number, 0 to 255)
