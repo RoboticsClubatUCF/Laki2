@@ -3,11 +3,11 @@
 from smbus2 import SMBus
 from BQ34Z100Fields import *
 import time, struct, math, sys
+import numpy as np
 
 def floatToXemicsF4(number): #Probably breaks with 0 and infinity
-    exponent = int(math.log2(abs(number))+1)-24 #TI reccomends this, but the +1 breaks things lots of times
+    exponent = int(math.floor(math.log2(abs(number))+1))-24 #Round towards -infinity
     mantissa = int(abs(number)/(2**exponent))&0x7FFFFF
-    print(mantissa)
     exponent = exponent + 128 + 24
     result = (exponent<<24) | mantissa | (int(number<0)<<23)
     return list(struct.pack('>L', result))
@@ -21,12 +21,15 @@ def xemicsF4ToFloat(bytes):
     result = mantissa * (2**exponent) * sign
     return result
 
-
-print(xemicsF4ToFloat(floatToXemicsF4(0.5)))
-print(xemicsF4ToFloat(floatToXemicsF4(-0.5)))
-print(xemicsF4ToFloat(floatToXemicsF4(0.4999999999)))
-print(xemicsF4ToFloat(floatToXemicsF4(2.1)))
-sys.exit()
+def testFloatConversion():
+    failed = False    
+    for x in np.linspace(-18, 18, 4*36+1):
+        if abs(2**x-xemicsF4ToFloat(floatToXemicsF4(2**x)))>(2**(-23+abs(x))):
+            print(str(2**x) + " failed with result of " + str(xemicsF4ToFloat(floatToXemicsF4(2**x))))
+            failed = True
+    return failed
+    
+testFloatConversion()
 
 def writeDataFlashField(i2cbus, field, value):
     i2cbus.write_byte_data(0x55, ExtendedCommands.BLOCKDATACONTROL.value, 0)
@@ -56,13 +59,6 @@ def writeDataFlashField(i2cbus, field, value):
     if(quicksum):
         temp = (255-oldchecksum-(sum(oldvalue)%256))%256
         newchecksum = 255 - (temp+sum(newvalue))%256
-    #print(i2cbus.read_i2c_block_data(0x55, ExtendedCommands.BLOCKDATA.value, 32))
-
-    #print(struct.unpack(field.value[2], bytearray(oldvalue)))
-    #print(oldvalue)
-    #print(oldchecksum)
-    #print(list(newvalue))
-    #print(newchecksum)
 
     i2cbus.write_i2c_block_data(0x55, ExtendedCommands.BLOCKDATA.value + field.value[1]%32, list(newvalue))
     i2cbus.write_byte_data(0x55, ExtendedCommands.BLOCKDATACHECKSUM.value, newchecksum)
@@ -110,6 +106,6 @@ print("Series cells: " + str(readDataFlashField(bus, DataFlashFields.NUMBERSERIE
 print("Divider: " + str(readDataFlashField(bus, DataFlashFields.VOLTAGEDIVIDER)))
 
 while True:
-    #b = bus.read_i2c_block_data(0x55, StandardCommands.VOLTAGE.value, 2)
-    #print(struct.unpack('H', bytearray(b))[0], end="\r")
+    b = bus.read_i2c_block_data(0x55, StandardCommands.VOLTAGE.value, 2)
+    print(struct.unpack('H', bytearray(b))[0], end="\r")
     time.sleep(0.05)
