@@ -15,6 +15,15 @@ from matplotlib.pyplot import Circle
 from matplotlib.collections import PatchCollection
 import time
 
+# Gravity
+gravity = 9.8066
+
+# Maximum thrust from one motor
+maxThrust = 4.450 * gravity
+
+# Weight of the vehicle
+vehicle_weight = 16.8 * gravity
+
 #----------------------------------------------------------------------------------#
 
 # csx is the cubic spline of x as a function of t
@@ -779,7 +788,6 @@ def bestSolution(wpx, wpy, tVals, newTval, points, index, polyObj, circles):
         # By setting alpha it changes how much weight is put on length vs curvature
 
         # TO DO: Modify this so it calculates the energy of the path
-        # 
 
         alpha = 0.3
         print "length: ", np.round(length, 4), "\talpha * curv: ", np.round(alpha*curv, 4)
