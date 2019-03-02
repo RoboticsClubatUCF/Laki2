@@ -1,5 +1,0 @@
-Shape: Octogon
-ShapeColor: Red
-ShapePosition: (237, 114)
-Letter: F
-LetterColor: Cyan

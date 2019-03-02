@@ -9,7 +9,8 @@ from PIL import Image, ImageDraw, ImageColor, ImageFont
 
 
 def main():
-    generateImage(400, 5, 10, "Double Dab")
+    for i in range(0, 4):
+        generateImage(400, 5, 10, str(i), forceShapeColor="Red")
 
 
 def generateImage(imSize, blurAmount=0, noiseProb=0, filename="dab", forceLetterColor=None, forceBackColor=None, forceShapeColor=None, forceLetter=None, forceShape=None):
@@ -41,6 +42,8 @@ def generateImage(imSize, blurAmount=0, noiseProb=0, filename="dab", forceLetter
         for c in colors:
             if c[0] == forceLetterColor:
                 letterColorChoice = c
+        if forceLetterColor == "Shape":
+            letterColorChoice = shapeColorChoice
 
     if not forceShapeColor == None:
         for c in colors:

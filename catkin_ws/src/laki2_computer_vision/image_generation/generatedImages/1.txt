@@ -1,0 +1,5 @@
+Shape: Octogon
+ShapeColor: Red
+ShapePosition: (166, 226)
+Letter: S
+LetterColor: Purple

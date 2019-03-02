@@ -1,0 +1,5 @@
+Shape: Heptagon
+ShapeColor: Red
+ShapePosition: (166, 284)
+Letter: T
+LetterColor: Green
