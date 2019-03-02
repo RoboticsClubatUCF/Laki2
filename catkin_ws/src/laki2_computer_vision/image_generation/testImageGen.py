@@ -209,7 +209,7 @@ def generateImage(imSize, blurAmount=0, noiseProb=0, filename="dab", forceLetter
     recPoint1 = (-50, -50)
     recPoint2 = (50,50)
 
-    pasteLetter = pasteLetter.rotate(math.degrees(angle), center=(50,50))
+    pasteLetter = pasteLetter.rotate(math.degrees(angle))
     recPoint1 = rotatePoint(recPoint1, angle)
     recPoint2 = rotatePoint(recPoint2, angle)
 
