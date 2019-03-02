@@ -12,7 +12,7 @@ def main():
     generateImage(400, 5, 10, "Double Dab")
 
 
-def generateImage(imSize, blurAmount=0, noiseProb=0, filename="dab", forceLetterColor=None, forceBackColor=None, forceShapeColor=None):
+def generateImage(imSize, blurAmount=0, noiseProb=0, filename="dab", forceLetterColor=None, forceBackColor=None, forceShapeColor=None, forceLetter=None, forceShape=None):
 
     shapes = ["Circle", "Square", "Rectangle", "Semi", "Quarter",
               "Triangle", "Pentagon", "Hexagon", "Cross", "Trapezoid",
@@ -25,6 +25,12 @@ def generateImage(imSize, blurAmount=0, noiseProb=0, filename="dab", forceLetter
     shapeColorChoice = random.choice(colors)
     letterChoice = random.choice(string.ascii_uppercase)
     letterColorChoice = shapeColorChoice
+
+    if forceLetter:
+        letterChoice = forceLetter
+
+    if forceShape:
+        shapeChoice = forceShape
 
     backgroundColor = colors[len(colors) - 1]
 
