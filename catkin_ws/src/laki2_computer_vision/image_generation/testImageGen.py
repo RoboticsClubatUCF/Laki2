@@ -59,7 +59,7 @@ def generateImage(imSize, blurAmount=0, noiseProb=0, filename="dab", forceLetter
 
     newImage = None
     
-    if not forceBackColor == None:
+    if  forceBackColor == None:
         newImage = Image.new('RGBA', (imSize, imSize), (random.randrange(
             0, 100), random.randrange(200, 255), random.randrange(0, 100), 255))
     else:

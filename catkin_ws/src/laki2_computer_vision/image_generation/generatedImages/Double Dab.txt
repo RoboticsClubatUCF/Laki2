@@ -1,5 +1,5 @@
 Shape: Octogon
-ShapeColor: Green
-ShapePosition: (237, 201)
-Letter: N
-LetterColor: Red
+ShapeColor: Red
+ShapePosition: (237, 114)
+Letter: F
+LetterColor: Cyan
