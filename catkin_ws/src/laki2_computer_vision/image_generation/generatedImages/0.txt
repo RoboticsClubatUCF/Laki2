@@ -1,5 +1,0 @@
-Shape: Square
-ShapeColor: Red
-ShapePosition: (166, 102)
-Letter: I
-LetterColor: Green

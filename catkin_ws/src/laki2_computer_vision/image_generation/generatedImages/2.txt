@@ -1,5 +1,0 @@
-Shape: Pentagon
-ShapeColor: Red
-ShapePosition: (153, 204)
-Letter: G
-LetterColor: Cyan
