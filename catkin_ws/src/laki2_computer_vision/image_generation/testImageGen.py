@@ -9,7 +9,9 @@ from PIL import Image, ImageDraw, ImageColor, ImageFont
 
 
 def main():
-    generateImage(400, 5, 10, "Double Dab")
+    for i in range(0, 100):
+        generateImage(400, 6, 11, str(i), forceShape = "Trapezoid")
+        print (i)
 
 
 def generateImage(imSize, blurAmount=0, noiseProb=0, filename="dab", forceLetterColor=None, forceBackColor=None, forceShapeColor=None, forceLetter=None, forceShape=None):
@@ -41,6 +43,8 @@ def generateImage(imSize, blurAmount=0, noiseProb=0, filename="dab", forceLetter
         for c in colors:
             if c[0] == forceLetterColor:
                 letterColorChoice = c
+        if forceLetterColor == "Shape":
+            letterColorChoice = shapeColorChoice
 
     if not forceShapeColor == None:
         for c in colors:
@@ -120,7 +124,7 @@ def generateImage(imSize, blurAmount=0, noiseProb=0, filename="dab", forceLetter
         drawIm.polygon(points, shapeColorChoice[1], shapeColorChoice[1])
 
     if shapeChoice == "Hexagon":
-        points = equalShape(3, 80)
+        points = equalShape(6, 80)
 
         for i in range(0, len(points)):
             points[i] = rotatePoint(points[i], angle)
@@ -140,7 +144,7 @@ def generateImage(imSize, blurAmount=0, noiseProb=0, filename="dab", forceLetter
         drawIm.polygon(points, shapeColorChoice[1], shapeColorChoice[1])
 
     if shapeChoice == "Octogon":
-        points = equalShape(7, 80)
+        points = equalShape(8, 80)
 
         for i in range(0, len(points)):
             points[i] = rotatePoint(points[i], angle)
@@ -260,16 +264,12 @@ def drawLetter(letter, letterColor, filePath):
     h *= 7
     x = 50 - (w / 2)
     y = 50 - (h / 2)
-    print (w, h)
 
     # dim.text(((100 - w)/2,(100-h)/2), str(letter), letterColor[1], font)
     dim.text((x, y), str(letter), letterColor[1], font)
     
     return im
     
-
-
-
 
 def clamp(val, rangemin, rangemax):
     if val < rangemin:
