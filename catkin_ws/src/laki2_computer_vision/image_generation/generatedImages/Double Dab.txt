@@ -1,0 +1,5 @@
+Shape: Rectangle
+ShapeColor: White
+ShapePosition: (287, 253)
+Letter: J
+LetterColor: Cyan
