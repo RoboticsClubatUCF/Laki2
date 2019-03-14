@@ -30,6 +30,12 @@ echo 'RC@UCF=28.5858215,-81.19923540000002,135,0' >> locations.txt
 
 echo 'export GAZEBO_MODEL_PATH=~/Laki2/catkin_ws/src/laki2_sim/models:~/ardupilot_gazebo/gazebo_models:${GAZEBO_MODEL_PATH}' >> ~/.bashrc
 echo "export GAZEBO_RESOURCE_PATH=~/ardupilot_gazebo/gazebo_worlds:~/Laki2/catkin_ws/src/laki2_sim/worlds:${GAZEBO_RESOURCE_PATH}
+export GAZEBO_PLUGIN_PATH=/usr/lib/x86_64-linux-gnu/gazebo-7.0/plugins:/usr/lib/x86_64-linux-gnu/gazebo-7/plugins
+source ~/.bashrc
+
+cd ~/Laki2/catkin_ws/src/laki2_common
+sudo pip install .
+
 source ~/.bashrc
 
 #TO RUN SIMULATOR ###

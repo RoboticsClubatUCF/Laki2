@@ -27,4 +27,5 @@ sudo pip install opencv-python
 sudo apt-get -y install python-opencv
 sudo apt-get -y install git
 
+echo "source /usr/share/gazebo/setup.sh" >> ~/.bashrc
 . ~/.bashrc
