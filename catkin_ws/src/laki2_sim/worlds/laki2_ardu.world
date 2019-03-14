@@ -61,9 +61,9 @@ LOITER> mode LAND
       <max_step_size>0.0025</max_step_size>
     </physics>
 
-    <!-- <include>
+    <include>
       <uri>model://sun</uri>
-    </include> -->
+    </include>
 
     <model name="ground_plane">
       <static>true</static>

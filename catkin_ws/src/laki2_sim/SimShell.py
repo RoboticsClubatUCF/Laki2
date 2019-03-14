@@ -65,6 +65,7 @@ class SimShell(cmd.Cmd):
 		set_param(param, value)
 
 	def do_revive(self, arg):	
+		'Un-kills sensors named by arg'
 
 		if arg == 'rc':
 			param = 'SIM_RC_FAIL'
@@ -75,14 +76,15 @@ class SimShell(cmd.Cmd):
 		set_param(param, value)	
 
 	def do_takeoff(self, arg):
-		
+		'Takeoff to a constant height'
 		rc_pub = rospy.Publisher('/mavros/rc/in', RCIn, queue_size = 100)	
 		rc_msg = RCIn()
 		rc_msg.channels = [0,0,0,1500,0,0,2113,0,0,0,0,0,0,0,0,0,0,0]
 		rc_pub.publish(rc_msg)
 
 	def do_mission(self, arg):
-	
+		'Push a test mission to fly'
+
 		mission_path = MissionPath()
 		wp1 = WP(10,10,10).toPoint()
 		wp2 = WP(20,20,10).toPoint()
@@ -96,6 +98,8 @@ class SimShell(cmd.Cmd):
 		mission_pub.publish(mission_path)
 
 	def do_end(self, arg):
+		'End the sim-shell'
+
 		return True	
 
 def set_param(param, value):
