@@ -9,7 +9,7 @@ from geometry_msgs.msg import PoseStamped, TwistStamped
 
 from laki2_common import TextColors
 
-import flight
+import flight, monitor
 
 ''' the main states for Laki2's state machine (SMACH)'''
 
@@ -63,6 +63,15 @@ def setMode(mode):
 		rospy.loginfo(TextColors.FAIL + 'Service call failed: %s' %e + TextColors.ENDC)
 
 	return setModeResponse	
+
+def child_term_cb():
+
+	pass
+
+def out_cb():
+
+	pass		
+
 
 # SM State: Land
 # From:		Mission, Hover(NYI)
@@ -216,7 +225,6 @@ def main():
 
 	rospy.Subscriber("/mavros/state", State, getMavrosState) #provides mavros state (connected, flight mode, etc.)
 	rospy.Subscriber("/mavros/rc/in", RCIn, getRCChannels) #subscribe to mavros topic for RC Data
-	# rospy.Subscriber("/laki2/flight_target/local", PoseStamped, getLocalTarget) #tells where we're going
 	rospy.Subscriber('/mavros/local_position/odom', Odometry, getCurrentPosition) #gives current, continuous position
 
 	sm = smach.StateMachine(outcomes=['exit_sm'])
@@ -228,13 +236,20 @@ def main():
 		smach.StateMachine.add('TAKEOFF', Takeoff(), transitions={'toPREFLIGHT': 'PREFLIGHT','toFLIGHT_SM':'FLIGHT_SM','exit':'exit_sm'})
 
 		flight_sm = smach.StateMachine(outcomes=['exit_to_preflight','exit_flight_sm'])
+		monitor_sm = smach.Concurrence(outcomes={'done', 'reset'},default_outcome='done', child_termination_cb=child_term_cb, outcome_cb=out_cb)
+
+		with monitor_sm:
+			smach.Concurrence.add('MONITOR_GPS', monitor.MonitorGPS())
+			#space here for more sensor monitors
 
 		with flight_sm:
 			
 			smach.StateMachine.add('MISSION', flight.Mission(), transitions={'returnToPREFLIGHT':'exit_to_preflight','toLAND':'LAND','exit_flight':'exit_flight_sm'})
 			smach.StateMachine.add('LAND', Land(), transitions={'returnToPREFLIGHT':'exit_to_preflight','exit_flight':'exit_flight_sm'})
+			smach.StateMachine.add('MONITOR', monitor_sm, transitions={'done':'exit_to_preflight', 'reset':'MONITOR'})
 
-		smach.StateMachine.add('FLIGHT_SM', flight_sm, transitions={'exit_to_preflight':'PREFLIGHT','exit_flight_sm':'exit_sm'})	
+		smach.StateMachine.add('FLIGHT_SM', flight_sm, transitions={'exit_to_preflight':'PREFLIGHT','exit_flight_sm':'exit_sm'})
+		# smach.StateMachine.add('MONITOR_SM', monitor_sm, transitions={'done':'exit_sm', 'reset':'MONITOR_SM'})	
 
 	introspect = smach_ros.IntrospectionServer('server', sm, '/SM')
 	introspect.start()

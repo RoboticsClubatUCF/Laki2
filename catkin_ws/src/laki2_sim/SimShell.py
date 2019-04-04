@@ -2,11 +2,13 @@
 
 import cmd, sys
 import rospy
-from mavros_msgs.srv import ParamSet, ParamGet
+from mavros_msgs.srv import ParamSet, ParamGet, SetMode
 from mavros_msgs.msg import RCIn
 
 from geometry_msgs.msg import Point
 from laki2_msg.msg import MissionPath
+
+from laki2_common import TextColors
 
 class Value():
 
@@ -53,6 +55,20 @@ class SimShell(cmd.Cmd):
 	file = None
 	# setParamSrv = rospy.ServiceProxy('/mavros/param/set', ParamSet)
 
+	# uses ROS service to set ARDUPILOT mode
+	# takes string with mode name, ALL CAPS
+	# made because this method is used multiple times throughout
+	def setMode(self, mode):
+
+		try:	#service call to set mode to auto
+			setModeSrv = rospy.ServiceProxy("/mavros/set_mode", SetMode) #http://wiki.ros.org/mavros/CustomModes
+			setModeResponse = setModeSrv(0, mode)
+			rospy.loginfo(TextColors.OKGREEN + str(setModeResponse) + TextColors.ENDC)
+		except rospy.ServiceException, e:
+			rospy.loginfo(TextColors.FAIL + 'Service call failed: %s' %e + TextColors.ENDC)
+
+		return setModeResponse	
+
 	def do_kill(self, arg):
 		'Kills sensor named by arg'
 		
@@ -70,7 +86,7 @@ class SimShell(cmd.Cmd):
 		if arg == 'rc':
 			param = 'SIM_RC_FAIL'
 			value = Value(0, 0)
-		elif arg == 'gps':
+		elif arg == 'gps': #gps status on/off 0/-1
 			param = 'SIM_GPS_DISABLE'
 			value = Value(0,0)	
 		set_param(param, value)	
@@ -97,8 +113,23 @@ class SimShell(cmd.Cmd):
 
 		mission_pub.publish(mission_path)
 
+	def do_mode(self, arg):
+		'Set flight mode'
+
+		if arg == 'auto':
+			self.setMode('AUTO')
+		elif arg == 'land':
+			self.setMode('LAND')	
+		elif arg == 'brake':
+			self.setMode('BRAKE')	
+
+
 	def do_end(self, arg):
 		'End the sim-shell'
+
+		input_rtl = raw_input('do you want to RTL? (y/n) : ')
+		if(input_rtl == 'y'):
+			self.setMode('RTL')
 
 		return True	
 

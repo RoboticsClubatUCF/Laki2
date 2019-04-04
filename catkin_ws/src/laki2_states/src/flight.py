@@ -136,15 +136,17 @@ class Mission(smach.State):
 
 	def getPosition(self, data):
 
-
 		self.current_pos = WP(data.pose.pose.position.x, data.pose.pose.position.y, data.pose.pose.position.z)
 
 	def __init__(self):
+
 		smach.State.__init__(self,outcomes=['returnToPREFLIGHT','toLAND','exit_flight'])
+		
 		self.wp_list = []
 		self.mission_ready = None
 		self.state = None
 		self.current_pos = None
+
 		rospy.Subscriber("/laki2/mission/waypoints", MissionPath, self.getMissionWPs)
 		rospy.Subscriber("/mavros/state", State, self.getState)
 		rospy.Subscriber("/mavros/local_position/odom", Odometry, self.getPosition)
