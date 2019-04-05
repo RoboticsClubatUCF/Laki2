@@ -189,7 +189,7 @@ class Takeoff(smach.State):
 			# rospy.loginfo(TextColors.FAIL + current_state.mode)
 
 			if (current_state.mode != 'GUIDED'):	
-				try:	#service call to set mode to takeoff
+				try:	#service call to set mode to guided (necessary for takeoff)
 					setModeSrv = rospy.ServiceProxy("/mavros/set_mode", SetMode) #http://wiki.ros.org/mavros/CustomModes
 					setModeResponse = setModeSrv(0, 'GUIDED')
 					rospy.loginfo(TextColors.OKGREEN + str(setModeResponse) + TextColors.ENDC)
@@ -206,7 +206,7 @@ class Takeoff(smach.State):
 
 			if (current_state.armed and guided and takeoffFlag):
 				takeoffCommandSrv = rospy.ServiceProxy("/mavros/cmd/takeoff", CommandTOL)
-				takeoffResponse = takeoffCommandSrv(0.0,0.0,0,0,10.0)
+				takeoffResponse = takeoffCommandSrv(0.0,0.0,0,0,1.0)
 
 				if takeoffResponse.success == 'True':
 					takeoffFlag = False
@@ -214,7 +214,7 @@ class Takeoff(smach.State):
 				# rospy.loginfo(takeoffResponse)
 
 			# this hard-coded altitude needs to die, eventually	
-			if (current_pos.pose.pose.position.z <= 10.1 and current_pos.pose.pose.position.z >= 9.9):	
+			if (current_pos.pose.pose.position.z <= 1.1 and current_pos.pose.pose.position.z >= 0.9):	
 				return 'toFLIGHT_SM'
 
 			rate.sleep()	
@@ -236,17 +236,17 @@ def main():
 		smach.StateMachine.add('TAKEOFF', Takeoff(), transitions={'toPREFLIGHT': 'PREFLIGHT','toFLIGHT_SM':'FLIGHT_SM','exit':'exit_sm'})
 
 		flight_sm = smach.StateMachine(outcomes=['exit_to_preflight','exit_flight_sm'])
-		monitor_sm = smach.Concurrence(outcomes={'done', 'reset'},default_outcome='done', child_termination_cb=child_term_cb, outcome_cb=out_cb)
+		# monitor_sm = smach.Concurrence(outcomes={'done', 'reset'},default_outcome='done', child_termination_cb=child_term_cb, outcome_cb=out_cb)
 
-		with monitor_sm:
-			smach.Concurrence.add('MONITOR_GPS', monitor.MonitorGPS())
+		# with monitor_sm:
+		# 	smach.Concurrence.add('MONITOR_GPS', monitor.MonitorGPS())
 			#space here for more sensor monitors
 
 		with flight_sm:
 			
 			smach.StateMachine.add('MISSION', flight.Mission(), transitions={'returnToPREFLIGHT':'exit_to_preflight','toLAND':'LAND','exit_flight':'exit_flight_sm'})
 			smach.StateMachine.add('LAND', Land(), transitions={'returnToPREFLIGHT':'exit_to_preflight','exit_flight':'exit_flight_sm'})
-			smach.StateMachine.add('MONITOR', monitor_sm, transitions={'done':'exit_to_preflight', 'reset':'MONITOR'})
+			# smach.StateMachine.add('MONITOR', monitor_sm, transitions={'done':'exit_to_preflight', 'reset':'MONITOR'})
 
 		smach.StateMachine.add('FLIGHT_SM', flight_sm, transitions={'exit_to_preflight':'PREFLIGHT','exit_flight_sm':'exit_sm'})
 		# smach.StateMachine.add('MONITOR_SM', monitor_sm, transitions={'done':'exit_sm', 'reset':'MONITOR_SM'})	
