@@ -91,9 +91,14 @@ test_trained_model("model_name")
 
 Run test_trained_model("model_name") to test out the model.
 
+The matplotlib example image below will be displayed, using twelve randomly selected
+images from the testing directory to make predictions on. 
+
+![Test Data Displayed](example_images/Screen_Shot_2019-04-01.png?raw=true "Test Data Displayed")
+
 ## Built With
 
-* [Tensorflow w/ Keras](https://www.tensorflow.org/api_docs) - The model training used.
+* [Tensorflow w/ Keras](https://www.tensorflow.org/api_docs) - API used for training the model.
 * [OpenCV](https://opencv.org/) - Image processing. 
 
 ## Authors
