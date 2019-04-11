@@ -36,7 +36,7 @@ class Coord:
 
 # uses ROS service to set ARDUPILOT mode
 # takes string with mode name, ALL CAPS e.g. 'BRAKE' or 'AUTO'
-# TESTED WORKING: AUTO, LAND, BRAKE
+# TESTED WORKING: AUTO, LAND, BRAKE, STABILIZE
 def setMode(mode):
 
 	try:	#service call to set mode to auto

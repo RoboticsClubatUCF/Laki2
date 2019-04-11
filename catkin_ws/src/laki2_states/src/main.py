@@ -32,7 +32,7 @@ def getMavrosState(data):
 def getRCChannels(data):
 
 	global rcNum
-	rcNum = data.channels[6] #channels[6] is the ON/OFFswitch (2113 is ON/ 1000 is OFF)	
+	rcNum = data.channels[4] #channels[4] == 'g' switch on RC controller (2067|961 -> ON|OFF)
 
 # callback that reads the /laki2/flight_target/local topic
 # flight_target/local is ideally published by the path-planning system to guide Laki2 
@@ -63,15 +63,6 @@ def setMode(mode):
 		rospy.loginfo(TextColors.FAIL + 'Service call failed: %s' %e + TextColors.ENDC)
 
 	return setModeResponse	
-
-def child_term_cb():
-
-	pass
-
-def out_cb():
-
-	pass		
-
 
 # SM State: Land
 # From:		Mission, Hover(NYI)
@@ -111,6 +102,7 @@ class Preflight(smach.State):
 		targetFlag = True
 		readyFlag = True
 		noOdomFlag = True
+		testFlag = False
 
 		while not rospy.is_shutdown():
 
@@ -121,55 +113,41 @@ class Preflight(smach.State):
 				rospy.loginfo(TextColors.WARNING + 'MAVROS NOT RUNNING' + TextColors.ENDC)
 				continue
 
+			# /mavros/local_position/odom	
 			if (current_pos is None):
+				rospy.loginfo(TextColors.WARNING + 'NO ODOMETRY DATA' + TextColors.ENDC)
 				continue	
 				
-			if (current_pos is None and noOdomFlag):
-				rospy.loginfo(TextColors.WARNING + 'NO ODOMETRY DATA' + TextColors.ENDC)
-				noOdomFlag = False
-				continue	
+			# if (current_pos is None and noOdomFlag):
+			# 	rospy.loginfo(TextColors.WARNING + 'NO ODOMETRY DATA' + TextColors.ENDC)
+			# 	noOdomFlag = False
+			# 	continue	
 
 			if (readyFlag):	
-				rospy.loginfo(TextColors.OKBLUE+ 'READY WHEN YOU ARE' + TextColors.ENDC)	
+				rospy.loginfo(TextColors.OKBLUE + 'READY WHEN YOU ARE' + TextColors.ENDC)	
 				readyFlag = False
 
 			# #does nothing if no target is published	(/laki2/flight_target)
 			# if (not gotTarget):
 			# 	continue	
 
-			# if (gotTarget and targetFlag):
-			# 	rospy.loginfo(TextColors.OKGREEN + 'TARGET RECEIVED' + TextColors.ENDC)	
-			# 	targetFlag = False	
-
-			# listens for RC switch, if ON (2113) switches to TAKEOFF state
+			# listens for RC switch, if ON (2067) switches to TAKEOFF state
 			# rcNum is from function getRCChannels()
-			if rcNum == 2113: 
+			if (rcNum == 2067): 
 				rospy.loginfo(TextColors.OKGREEN + "RC SWITCH: ON" + TextColors.ENDC)
 				return 'toTAKEOFF'
 
+			# if testFlag:	
+				
+
+
 # SM State: TAKEOFF
 # From: 	PREFLIGHT
-# Purpose:	to takeoff from the ground to a hardcoded height of ten meters
+# Purpose:	to takeoff from the ground to a hardcoded height
 class Takeoff(smach.State):
 
 	def __init__(self):
-		smach.State.__init__(self, outcomes=['exit','toPREFLIGHT','toFLIGHT_SM'])
-
-
-	#NOT WORKING FOR ARDUPILOT	
-	def getTakeoffAlt(self):
-
-		'''reading the PX4 param 'MIS_TAKEOFF_ALT'
-		useful method to read any PX4 param in script
-		https://docs.px4.io/en/advanced_config/parameter_reference.html'''
-
-		try:
-			takeoffAltSrv = rospy.ServiceProxy('/mavros/param/get', ParamGet)	
-			takeoffResponse = takeoffAltSrv('MIS_TAKEOFF_ALT')
-			self.targetAlt = takeoffResponse.value.real
-
-		except rospy.ServiceException, e:
-			rospy.loginfo('Service call failed: %s' %e)	
+		smach.State.__init__(self, outcomes=['exit','toPREFLIGHT','toFLIGHT_SM', 'reset'])
 
 	def execute(self, userdata):
 
@@ -182,42 +160,51 @@ class Takeoff(smach.State):
 
 		takeoffFlag = True	
 
-		# startAlt = current_pos.pose.pose.position.z	
+		# while not rospy.is_shutdown():
 
-		while not rospy.is_shutdown():
+		# 961 is up on switch 'g'
+		# if (rcNum == 961):
 
-			# rospy.loginfo(TextColors.FAIL + current_state.mode)
+		# 	if(current_state.mode != 'STABILIZE'):
+		# 		setMode("STABILIZE")
 
-			if (current_state.mode != 'GUIDED'):	
-				try:	#service call to set mode to guided (necessary for takeoff)
-					setModeSrv = rospy.ServiceProxy("/mavros/set_mode", SetMode) #http://wiki.ros.org/mavros/CustomModes
-					setModeResponse = setModeSrv(0, 'GUIDED')
-					rospy.loginfo(TextColors.OKGREEN + str(setModeResponse) + TextColors.ENDC)
-					guided = True
+			# continue
 
-				except rospy.ServiceException, e:
-					rospy.loginfo(TextColors.FAIL + 'Service call failed: %s' %e + TextColors.ENDC)
+		if (current_state.mode != 'GUIDED'):	
+			try:	#service call to set mode to guided (necessary for takeoff)
+				setModeSrv = rospy.ServiceProxy("/mavros/set_mode", SetMode) #http://wiki.ros.org/mavros/CustomModes
+				setModeResponse = setModeSrv(0, 'GUIDED')
+				rospy.loginfo(TextColors.OKGREEN + str(setModeResponse) + TextColors.ENDC)
+				guided = True
 
-			# arming Laki2, must be armed before takeoff (PX4 and ARDUPILOT)
-			if ((not current_state.armed) and guided): 
-				armCommandSrv = rospy.ServiceProxy("/mavros/cmd/arming", CommandBool)		
-				armResponse = armCommandSrv(True)
-				# rospy.loginfo(armResponse)		
+			except rospy.ServiceException, e:
+				rospy.loginfo(TextColors.FAIL + 'Service call failed: %s' %e + TextColors.ENDC)
 
-			if (current_state.armed and guided and takeoffFlag):
-				takeoffCommandSrv = rospy.ServiceProxy("/mavros/cmd/takeoff", CommandTOL)
-				takeoffResponse = takeoffCommandSrv(0.0,0.0,0,0,1.0)
+		# arming Laki2, must be armed before takeoff (PX4 and ARDUPILOT)
+		if ((not current_state.armed) and guided): 
+			armCommandSrv = rospy.ServiceProxy("/mavros/cmd/arming", CommandBool)		
+			armResponse = armCommandSrv(True)
+			# rospy.loginfo(armResponse)		
 
-				if takeoffResponse.success == 'True':
-					takeoffFlag = False
-				
-				# rospy.loginfo(takeoffResponse)
+		if (current_state.armed and guided and takeoffFlag):
+			takeoffCommandSrv = rospy.ServiceProxy("/mavros/cmd/takeoff", CommandTOL)
+			takeoffResponse = takeoffCommandSrv(0.0,0.0,0,0,1.0)
 
-			# this hard-coded altitude needs to die, eventually	
-			if (current_pos.pose.pose.position.z <= 1.1 and current_pos.pose.pose.position.z >= 0.9):	
+			if takeoffResponse.success == 'True':
+				takeoffFlag = False
 				return 'toFLIGHT_SM'
 
-			rate.sleep()	
+		
+		return 'reset'	
+			# rospy.loginfo(takeoffResponse)
+
+		# # this hard-coded altitude needs to die, eventually	
+		# if (current_pos.pose.pose.position.z <= 1.1 and current_pos.pose.pose.position.z >= 0.9):	
+		# 	# setMode('STABILIZE')
+		# 	rospy.loginfo('got there, bitch')
+		
+
+		rate.sleep()	
 
 def main():
 	
@@ -225,7 +212,7 @@ def main():
 
 	rospy.Subscriber("/mavros/state", State, getMavrosState) #provides mavros state (connected, flight mode, etc.)
 	rospy.Subscriber("/mavros/rc/in", RCIn, getRCChannels) #subscribe to mavros topic for RC Data
-	rospy.Subscriber('/mavros/local_position/odom', Odometry, getCurrentPosition) #gives current, continuous position
+	rospy.Subscriber('/mavros/local_position/odom', Odometry, getCurrentPosition) #gives current, continuous position (odom frame)
 
 	sm = smach.StateMachine(outcomes=['exit_sm'])
 
@@ -233,7 +220,7 @@ def main():
 	with sm:
 
 		smach.StateMachine.add('PREFLIGHT', Preflight(), transitions={'toTAKEOFF':'TAKEOFF','exit':'exit_sm'})
-		smach.StateMachine.add('TAKEOFF', Takeoff(), transitions={'toPREFLIGHT': 'PREFLIGHT','toFLIGHT_SM':'FLIGHT_SM','exit':'exit_sm'})
+		smach.StateMachine.add('TAKEOFF', Takeoff(), transitions={'toPREFLIGHT': 'PREFLIGHT','toFLIGHT_SM':'FLIGHT_SM','exit':'exit_sm', 'reset':'TAKEOFF'})
 
 		flight_sm = smach.StateMachine(outcomes=['exit_to_preflight','exit_flight_sm'])
 		# monitor_sm = smach.Concurrence(outcomes={'done', 'reset'},default_outcome='done', child_termination_cb=child_term_cb, outcome_cb=out_cb)
