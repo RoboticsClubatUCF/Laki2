@@ -77,7 +77,9 @@ class RC_Controller():
 			if rc_msg_type is None:	
 				rc_msg.channels = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
 			elif rc_msg_type == 'takeoff':
-				rc_msg.channels = [0,0,0,1500,2067,0,2113,0,0,0,0,0,0,0,0,0,0,0]	
+				rc_msg.channels = [0,0,0,1500,2067,0,2113,0,0,0,0,0,0,0,0,0,0,0]
+			elif rc_msg_type == 'standby':
+				rc_msg.channels = [0,0,0,1500,961,0,2113,0,0,0,0,0,0,0,0,0,0,0]		
 
 			self.rc_pub.publish(rc_msg)
 
@@ -114,7 +116,8 @@ class SimShell(cmd.Cmd):
 			armResponse = armCommandSrv(True)
 			print armResponse
 		except rospy.ServiceException, e:
-				rospy.loginfo(TextColors.FAIL + 'Service call failed: %s' %e + TextColors.ENDC)	
+			rospy.loginfo(TextColors.FAIL + 'Service call failed: %s' %e + TextColors.ENDC)	
+				
 
 	def do_kill(self, arg):
 		'Kills sensor named by arg'
@@ -138,16 +141,11 @@ class SimShell(cmd.Cmd):
 			value = Value(0,0)	
 		set_param(param, value)	
 
-	def do_takeoff(self, arg):
+	def do_rc(self, arg):
 		'Takeoff to a constant height'
 
 		global rc_msg_type
-
-		# rc_pub = rospy.Publisher('/mavros/rc/in', RCIn, queue_size = 100)	
-		# rc_msg = RCIn()
-		# rc_msg.channels = [0,0,0,1500,2067,0,2113,0,0,0,0,0,0,0,0,0,0,0]
-		# rc_pub.publish(rc_msg)
-		rc_msg_type = 'takeoff'
+		rc_msg_type = str(arg)
 
 	def do_mission(self, arg):
 		'Push a test mission to fly'

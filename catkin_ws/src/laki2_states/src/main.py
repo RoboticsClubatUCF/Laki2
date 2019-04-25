@@ -6,6 +6,7 @@ from mavros_msgs.srv import CommandBool, SetMode, ParamGet, CommandTOL
 from mavros_msgs.msg import State, RCIn
 from nav_msgs.msg import Odometry
 from geometry_msgs.msg import PoseStamped, TwistStamped
+from sensor_msgs.msg import NavSatFix
 
 from laki2_common import TextColors
 
@@ -14,7 +15,7 @@ import flight, monitor
 ''' the main states for Laki2's state machine (SMACH)'''
 
 # initializing global variables to NONE
-rcNum = None
+rcChannels = None
 current_state = None
 current_pos = None
 # target = None
@@ -31,8 +32,8 @@ def getMavrosState(data):
 # provided array can be used to simulate a real-world rc unit
 def getRCChannels(data):
 
-	global rcNum
-	rcNum = data.channels[4] #channels[4] == 'g' switch on RC controller (2067|961 -> ON|OFF)
+	global rcChannels
+	rcChannels = data.channels #channels[4] == 'g' switch on RC controller (2067|961 -> ON|OFF)
 
 # callback that reads the /laki2/flight_target/local topic
 # flight_target/local is ideally published by the path-planning system to guide Laki2 
@@ -64,23 +65,29 @@ def setMode(mode):
 
 	return setModeResponse	
 
-# SM State: Land
-# From:		Mission, Hover(NYI)
-# Purpose:	controlled landing of the quad wherever it is
-#			NO RTL 
-class Land(smach.State):
+	
+# SM State: Standby
+# From: 	Any other state
+# Purpose:	Does nothing, allows FCU and RC to run the show
+#			Waits for RC switch to switch back to preflight
+class Standby(smach.State):
 
 	def __init__(self):
-		smach.State.__init__(self, outcomes=['returnToPREFLIGHT','exit_flight'])
+		smach.State.__init__(self, outcomes=['exit','toPREFLIGHT','toFLIGHT_SM'])
 
-	def execute(self,userdata):
+		self.TAG = "STANDBY"
 
-		setMode('LAND')
+	def execute(self, userdata):
+	
+		rate = rospy.Rate(30)
 
 		while not rospy.is_shutdown():
 
-			if(current_pos.pose.pose.position.z == 0):
-				return 'returnToPREFLIGHT'		
+			rate.sleep()
+
+			if rcChannels[4] == 2067:
+				return 'toPREFLIGHT'		
+
 
 # SM State: PREFLIGHT
 # From: 	NONE
@@ -92,7 +99,9 @@ class Preflight(smach.State):
 
 	def __init__(self):
 		# smach.State.__init__(self, outcomes=['toTAKEOFF','toFLIGHT'])
-		smach.State.__init__(self, outcomes=['exit','toTAKEOFF'])
+		smach.State.__init__(self, outcomes=['exit','toTAKEOFF','toSTANDBY'])
+
+		self.TAG = "PREFLIGHT"
 		
 	def execute(self, userdata):
 
@@ -107,6 +116,10 @@ class Preflight(smach.State):
 		while not rospy.is_shutdown():
 
 			rate.sleep()
+
+			if self.preempt_requested():
+				self.service_preempt()
+				return 'toSTANDBY'
 			
 			# does nothing if mavros is not up and running yet (/mavros/state)
 			if (current_state is None):
@@ -132,8 +145,8 @@ class Preflight(smach.State):
 			# 	continue	
 
 			# listens for RC switch, if ON (2067) switches to TAKEOFF state
-			# rcNum is from function getRCChannels()
-			if (rcNum == 2067): 
+			# rcChannelsis from function getRCChannels()
+			if (rcChannels[4] == 2067): 
 				rospy.loginfo(TextColors.OKGREEN + "RC SWITCH: ON" + TextColors.ENDC)
 				return 'toTAKEOFF'
 
@@ -147,7 +160,9 @@ class Preflight(smach.State):
 class Takeoff(smach.State):
 
 	def __init__(self):
-		smach.State.__init__(self, outcomes=['exit','toPREFLIGHT','toFLIGHT_SM', 'reset'])
+		smach.State.__init__(self, outcomes=['exit','toPREFLIGHT','toFLIGHT_SM','toSTANDBY'])
+
+		self.TAG = "TAKEOFF"
 
 	def execute(self, userdata):
 
@@ -160,84 +175,149 @@ class Takeoff(smach.State):
 
 		takeoffFlag = True	
 
-		# while not rospy.is_shutdown():
+		while not rospy.is_shutdown():
 
-		# 961 is up on switch 'g'
-		# if (rcNum == 961):
+			rate.sleep()
 
-		# 	if(current_state.mode != 'STABILIZE'):
-		# 		setMode("STABILIZE")
+			# 961 is up on switch 'g'
+			# if (rcNum == 961):
+
+			# 	if(current_state.mode != 'STABILIZE'):
+			# 		setMode("STABILIZE")
 
 			# continue
 
-		if (current_state.mode != 'GUIDED'):	
-			try:	#service call to set mode to guided (necessary for takeoff)
-				setModeSrv = rospy.ServiceProxy("/mavros/set_mode", SetMode) #http://wiki.ros.org/mavros/CustomModes
-				setModeResponse = setModeSrv(0, 'GUIDED')
-				rospy.loginfo(TextColors.OKGREEN + str(setModeResponse) + TextColors.ENDC)
-				guided = True
+			if self.preempt_requested():
+				self.service_preempt()
+				return 'toSTANDBY'
 
-			except rospy.ServiceException, e:
-				rospy.loginfo(TextColors.FAIL + 'Service call failed: %s' %e + TextColors.ENDC)
+			if (current_state.mode != 'GUIDED'):	
+				try:	#service call to set mode to guided (necessary for takeoff)
+					setModeSrv = rospy.ServiceProxy("/mavros/set_mode", SetMode) #http://wiki.ros.org/mavros/CustomModes
+					setModeResponse = setModeSrv(0, 'GUIDED')
+					rospy.loginfo(TextColors.OKGREEN + str(setModeResponse) + TextColors.ENDC)
+					guided = True
 
-		# arming Laki2, must be armed before takeoff (PX4 and ARDUPILOT)
-		if ((not current_state.armed) and guided): 
-			armCommandSrv = rospy.ServiceProxy("/mavros/cmd/arming", CommandBool)		
-			armResponse = armCommandSrv(True)
-			# rospy.loginfo(armResponse)		
+				except rospy.ServiceException, e:
+					rospy.loginfo(TextColors.FAIL + 'Service call failed: %s' %e + TextColors.ENDC)
 
-		if (current_state.armed and guided and takeoffFlag):
-			takeoffCommandSrv = rospy.ServiceProxy("/mavros/cmd/takeoff", CommandTOL)
-			takeoffResponse = takeoffCommandSrv(0.0,0.0,0,0,1.0)
+			# arming Laki2, must be armed before takeoff (PX4 and ARDUPILOT)
+			if ((not current_state.armed) and guided): 
+				armCommandSrv = rospy.ServiceProxy("/mavros/cmd/arming", CommandBool)		
+				armResponse = armCommandSrv(True)
+				# rospy.loginfo(armResponse)		
 
-			if takeoffResponse.success == 'True':
+			if (current_state.armed and guided and takeoffFlag):
+				takeoffCommandSrv = rospy.ServiceProxy("/mavros/cmd/takeoff", CommandTOL)
+				takeoffResponse = takeoffCommandSrv(0.0,0.0,0,0,1.0)
 				takeoffFlag = False
-				return 'toFLIGHT_SM'
 
+				if takeoffResponse.success == True:
+
+					while not (current_pos.pose.pose.position.z <= 1.1 and current_pos.pose.pose.position.z >= 0.9):
+						rate.sleep()
+						
+					return 'toFLIGHT_SM'
+
+
+# adapted from RoboSub 
+class Safety(smach.State):
+
+	def __init__(self):
+		smach.State.__init__(self, outcomes=['PREEMPTED', 'toSTANDBY'])
+
+		self.TAG = "SAFETY"
+		self.rcStop = False
+		self.gpsError = False
+
+		rospy.Subscriber('/mavros/rc/in', RCIn, self.radioCB)
+		rospy.Subscriber('/mavros/global_position/global', NavSatFix, self.gpsCB)
 		
-		return 'reset'	
-			# rospy.loginfo(takeoffResponse)
+	def radioCB(self, data):
 
-		# # this hard-coded altitude needs to die, eventually	
-		# if (current_pos.pose.pose.position.z <= 1.1 and current_pos.pose.pose.position.z >= 0.9):	
-		# 	# setMode('STABILIZE')
-		# 	rospy.loginfo('got there, bitch')
-		
+		if data.channels[4] == 961:
+			self.rcStop = True
 
-		rate.sleep()	
+	def	gpsCB(self, data):
+
+		if data.status == -1:
+			self.gpsError = True
+
+	def execute(self, userdata):
+
+		rate = rospy.Rate(30)
+
+		while not self.rcStop and not self.gpsError and not self.preempt_requested():
+			rate.sleep()
+
+		if self.preempt_requested():
+			self.service_preempt()
+			return 'PREEMPTED'
+		elif self.rcStop:
+			self.rcStop = False
+			# if current_state.mode != "STABILIZE":
+			# 	setMode('STABILIZE')
+			return 'toSTANDBY'
+		elif self.gpsError:
+			self.gpsError = False
+			# if current_state.mode != "LOITER":
+			# 	setMode('LOITER')
+			return 'toSTANDBY'
+
+# shamelessly lifted from RoboSub
+def safetyWrap(task):		
+
+	def safety_outcome(outcome_map):
+		rospy.logerr(outcome_map)
+		if outcome_map['SAFETY'] != 'PREEMPTED':
+			return outcome_map['SAFETY']
+		elif outcome_map[task.TAG] is not None:
+			return outcome_map[task.TAG]
+		else:
+			return 'ABORT'
+
+	def safety_term(outcome_map):
+		return True
+
+	safetyState = Safety()
+	outcomes = list(task.get_registered_outcomes()) + list(safetyState.get_registered_outcomes())
+	outcomes[:] = [x for x in outcomes if x != 'PREEMPTED']
+
+	sm_wrapper = smach.Concurrence(outcomes,
+					default_outcome='toSTANDBY',
+					outcome_cb=safety_outcome,
+					child_termination_cb=safety_term)
+
+	with sm_wrapper:
+		smach.Concurrence.add("SAFETY", Safety())
+		smach.Concurrence.add(task.TAG, task)
+
+	return sm_wrapper
+
 
 def main():
 	
 	rospy.init_node('laki2_sm', anonymous=True)
 
-	rospy.Subscriber("/mavros/state", State, getMavrosState) #provides mavros state (connected, flight mode, etc.)
-	rospy.Subscriber("/mavros/rc/in", RCIn, getRCChannels) #subscribe to mavros topic for RC Data
+	rospy.Subscriber('/mavros/state', State, getMavrosState) #provides mavros state (connected, flight mode, etc.)
+	rospy.Subscriber('/mavros/rc/in', RCIn, getRCChannels) #subscribe to mavros topic for RC Data
 	rospy.Subscriber('/mavros/local_position/odom', Odometry, getCurrentPosition) #gives current, continuous position (odom frame)
 
 	sm = smach.StateMachine(outcomes=['exit_sm'])
+	# takeoff_sm = smach.StateMachine(outcomes=['to_flight_sm', 'preempt','exit','toSTANDBY'])
+	# flight_sm = smach.StateMachine(outcomes=['exit_to_preflight','toSTANDBY','exit_sm', 'exit_flight_sm'])
 
     # Open the container, declare the SMACH states
 	with sm:
 
-		smach.StateMachine.add('PREFLIGHT', Preflight(), transitions={'toTAKEOFF':'TAKEOFF','exit':'exit_sm'})
-		smach.StateMachine.add('TAKEOFF', Takeoff(), transitions={'toPREFLIGHT': 'PREFLIGHT','toFLIGHT_SM':'FLIGHT_SM','exit':'exit_sm', 'reset':'TAKEOFF'})
+		smach.StateMachine.add('PREFLIGHT', safetyWrap(Preflight()), transitions={'exit':'exit_sm', 'toTAKEOFF':'TAKEOFF', 'toSTANDBY':'STANDBY'})
 
-		flight_sm = smach.StateMachine(outcomes=['exit_to_preflight','exit_flight_sm'])
-		# monitor_sm = smach.Concurrence(outcomes={'done', 'reset'},default_outcome='done', child_termination_cb=child_term_cb, outcome_cb=out_cb)
+		smach.StateMachine.add('TAKEOFF', safetyWrap(Takeoff()), transitions={'exit':'exit_sm','toPREFLIGHT':'PREFLIGHT', 'toFLIGHT_SM':'FLIGHT_SM', 'toSTANDBY':'STANDBY'})
 
-		# with monitor_sm:
-		# 	smach.Concurrence.add('MONITOR_GPS', monitor.MonitorGPS())
-			#space here for more sensor monitors
+		smach.StateMachine.add('FLIGHT_SM', flight.makeTask(), transitions={'exit_toPREFLIGHT':'PREFLIGHT', 'exit_toSTANDBY':'STANDBY', 'DONE':'exit_sm'})
 
-		with flight_sm:
-			
-			smach.StateMachine.add('MISSION', flight.Mission(), transitions={'returnToPREFLIGHT':'exit_to_preflight','toLAND':'LAND','exit_flight':'exit_flight_sm'})
-			smach.StateMachine.add('LAND', Land(), transitions={'returnToPREFLIGHT':'exit_to_preflight','exit_flight':'exit_flight_sm'})
-			# smach.StateMachine.add('MONITOR', monitor_sm, transitions={'done':'exit_to_preflight', 'reset':'MONITOR'})
-
-		smach.StateMachine.add('FLIGHT_SM', flight_sm, transitions={'exit_to_preflight':'PREFLIGHT','exit_flight_sm':'exit_sm'})
-		# smach.StateMachine.add('MONITOR_SM', monitor_sm, transitions={'done':'exit_sm', 'reset':'MONITOR_SM'})	
-
+		smach.StateMachine.add('STANDBY', Standby(), transitions={'exit':'exit_sm','toPREFLIGHT':'PREFLIGHT', 'toFLIGHT_SM':'FLIGHT_SM'})
+		
 	introspect = smach_ros.IntrospectionServer('server', sm, '/SM')
 	introspect.start()
 

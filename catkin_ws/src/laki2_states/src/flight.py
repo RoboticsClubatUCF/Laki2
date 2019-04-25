@@ -12,6 +12,7 @@ import laki2_common.gps_converter as laki2_GPS
 from laki2_common import TextColors
 from laki2_msg.msg import MissionPath
 
+
 # simple Waypoint (WP) class to hold (x,y,z)s 
 # used in MISSION state to build the mission
 class WP:
@@ -140,7 +141,7 @@ class Mission(smach.State):
 
 	def __init__(self):
 
-		smach.State.__init__(self,outcomes=['returnToPREFLIGHT','toLAND','exit_flight'])
+		smach.State.__init__(self,outcomes=['toPREFLIGHT','toLAND','toSTANDBY','exit'])
 		
 		self.wp_list = []
 		self.mission_ready = None
@@ -153,7 +154,7 @@ class Mission(smach.State):
 
 	def execute(self, userdata):
 	
-		self.clearCurrentMission()
+		# self.clearCurrentMission()
 
 		rate = rospy.Rate(30)
 
@@ -182,3 +183,36 @@ class Mission(smach.State):
 
 		return 'exit_flight'
 
+
+# SM State: Land
+# From:		Mission, Hover(NYI)
+# Purpose:	controlled landing of the quad wherever it is
+#			NO RTL 
+class Land(smach.State):
+
+	def __init__(self):
+		smach.State.__init__(self, outcomes=['toPREFLIGHT','toSTANDBY','exit'])
+
+		self.TAG = "LAND"
+
+	def execute(self,userdata):
+
+		setMode('LAND')
+
+		while not rospy.is_shutdown():
+
+			if(current_pos.pose.pose.position.z == 0):
+				return 'returnToPREFLIGHT'	
+
+
+
+def makeTask():
+
+	task = smach.StateMachine(outcomes=['exit_toPREFLIGHT', 'exit_toSTANDBY', 'DONE'])
+
+	with task:
+
+		smach.StateMachine.add('MISSION', Mission(), transitions={'toPREFLIGHT':'exit_toPREFLIGHT', 'toSTANDBY':'exit_toSTANDBY', 'toLAND':'LAND', 'exit':'DONE'})
+		smach.StateMachine.add('LAND', Land(), transitions={'toPREFLIGHT':'exit_toPREFLIGHT', 'toSTANDBY':'exit_toSTANDBY', 'exit':'DONE'})
+
+	return task
